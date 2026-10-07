@@ -221,6 +221,64 @@ form or URL is trusted as proof of ownership.
   user must sign in again. (Password *change* keeps the current browser
   signed in and preserves remember-me.)
 
+## Admin Area (Phase 10.1)
+
+Sign in as an ADMIN or SUPER_ADMIN. There is no public way to create one
+(public registration always makes a STUDENT), so the first admin must be
+created out-of-band (e.g. a one-off script calling
+`createUser({ ..., role: "SUPER_ADMIN" })`); everything after that is
+managed from the UI.
+
+**Routes** (all `noindex, nofollow`): `/admin` (dashboard), `/admin/users`,
+`/admin/users/[user-id]`, `/admin/students`, `/admin/students/[student-id]`,
+`/admin/trainers`, `/admin/trainers/new`, `/admin/trainers/[trainer-id]`,
+`/admin/roles`. IDs in these URLs are **user ids**. Future sidebar sections
+(CRM, Courses, Batches, Payments, Certificates, Reports, Placement, Content,
+Settings) show "Soon" and have no routes.
+
+- **Dashboard** — real counts from the database only: users, students,
+  trainers, staff, users with an unexpired session, role distribution, recent
+  registrations, database status. Nothing is estimated or hard-coded.
+- **Lists** — server-side search (name/email, plus phone for
+  students/trainers), role filter (users), sort (newest/oldest/name) and
+  20-per-page pagination. The query string is sanitized and all SQL is
+  parameterized.
+- **Trainer creation** — `/admin/trainers/new`: name, email, optional phone,
+  temporary password (min 8, bcryptjs). The role is always TRAINER, duplicate
+  emails are rejected, and the password is never echoed or logged.
+- **Trainer-batch assignment** — from the trainer page; reuses
+  `trainer_batch_assignments`. The trainer must be a TRAINER user, the batch
+  must exist in the file-based catalog, duplicates are rejected.
+- **Account status** — ACTIVE/INACTIVE/SUSPENDED already existed (login and
+  `getCurrentUser()` enforce it). Admins can deactivate/reactivate accounts
+  (sessions are revoked on deactivation). You can't change your own account;
+  only a SUPER_ADMIN can change an ADMIN/SUPER_ADMIN account; the last active
+  SUPER_ADMIN can't be deactivated.
+- **Roles & Access** — read-only overview. **Role editing is deferred**, and
+  no user deletion exists (deactivate instead).
+- **Students** — read-only: profile, enrollments, progress, attendance,
+  submissions, certificates (existing data only). There is no enrollment
+  creation yet.
+
+**Security model.** Identity always comes from `getCurrentUser()` via
+`src/lib/admin/context.js`. Only ADMIN and SUPER_ADMIN
+(`ADMIN_MANAGEMENT_ROLES` in `src/constants/roles.js`) can use the management
+pages. Every page calls `requireAdminContext()` and every Server
+Action/domain function re-checks `getAdminContext()`; the proxy and layout are
+not relied on. Students and trainers are redirected to their own area. Other
+staff roles (COUNSELLOR, ACCOUNTANT, CONTENT_MANAGER, PLACEMENT_MANAGER) may
+open `/admin` but only see a limited landing page and are redirected away from
+the management routes. Admin queries never select password hashes, session
+tokens or reset tokens. No schema change was needed in this phase.
+
+**Audit log — not implemented.** Future admin phases should record role
+changes, account status changes, trainer assignments, financial actions and
+certificate actions.
+
+**Still deferred:** CRM/leads, enrollment creation, payments, certificate
+issuing, placement, materials, announcements, advanced analytics,
+notification automation, content management.
+
 ## Phase Status
 
 - **Phase 9.1** Trainer foundation — done.
@@ -233,15 +291,15 @@ form or URL is trusted as proof of ownership.
   fix, trainer isolation, password-reset session revocation, loading/error
   states for the student and trainer areas, drawer focus restoration, test
   safety net.
-- **Phase 10** Admin foundation — next, not started.
+- **Phase 10.1 — Admin Foundation: COMPLETE.** Real admin shell and dashboard, user/student/trainer management, trainer creation, trainer-batch assignment, read-only roles page, account activate/deactivate. See "Admin Area" below.
+- **Phase 10.2** CRM / leads + enquiry persistence — next, not started.
 
 ## Known Limitations
 
 - **Homepage statistics and sample catalog data are unverified marketing
   content** (batch dates are illustrative — see `src/data/batches.js`).
   Confirm real figures before any public launch.
-- Trainer accounts and trainer-batch assignments exist only via the
-  `setup:trainer` CLI until the Admin panel (Phase 10) exists.
+- Trainer accounts can be created and assigned to batches from the Admin area; the `setup:trainer` CLI remains a local development shortcut.
 - Enquiry/demo-booking forms do not persist submissions yet.
 - No avatar upload / trainer profile (Phase 9.3, deferred).
 - Batch status is static catalog data; there is no real enrollment flow and
@@ -268,10 +326,14 @@ form or URL is trusted as proof of ownership.
   notifications (the underlying flows are built and API-ready; sending
   real email needs a provider configured, which is intentionally out of
   scope so far).
-- No Admin Panel. A placeholder `/admin` route exists (gated by the same
-  role-based authorization as everything else) but has no real
-  functionality — building it out is future work, not part of this
-  handoff.
+- The Admin area covers user, student and trainer management only
+  (Phase 10.1). Role editing, user deletion, an audit log, CRM, enrollment
+  creation, payments, certificate issuing, placement, content, reports and
+  settings are not built. Admin lists/forms have not been exercised in a real
+  browser by automation (responsive layout and drawer focus restore are
+  source-reviewed; live checks were HTTP-level).
+- Other staff roles (counsellor, accountant, …) can sign in but only see a
+  limited `/admin` landing page; per-role modules come in later phases.
 - Windows native compilation of `better-sqlite3` is expected to work (see
   Requirements) but was **NOT VERIFIED** on an actual Windows machine —
   this project was built and tested in a Linux sandbox.

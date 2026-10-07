@@ -16,6 +16,14 @@ const PATHS = {
   payments: "M3 6h14v9H3V6zm0 3h14M6 12h2",
   notifications: "M10 3a4 4 0 00-4 4v3l-1.5 3h11L14 10V7a4 4 0 00-4-4zM8.5 16a1.5 1.5 0 003 0",
   profile: "M10 10a3 3 0 100-6 3 3 0 000 6zM4 17c0-3.3 2.7-6 6-6s6 2.7 6 6",
+  // Admin area (Phase 10.1)
+  users: "M7.5 9a2.5 2.5 0 100-5 2.5 2.5 0 000 5zM2.5 16c0-2.8 2.2-5 5-5s5 2.2 5 5M13 4.5a2.3 2.3 0 010 4.5M14 11.3c1.9.5 3.5 2.2 3.5 4.7",
+  roles: "M10 2.5l6 2.2v4.6c0 3.6-2.5 6.4-6 7.7-3.5-1.3-6-4.1-6-7.7V4.7l6-2.2zM7.5 10l2 2 3.5-4",
+  crm: "M3 4h14v9H8l-4 3v-3H3V4z",
+  reports: "M4 16V9m4 7V4m4 12v-5m4 5V7",
+  placement: "M3 7h14v9H3V7zm4 0V5a1 1 0 011-1h4a1 1 0 011 1v2",
+  content: "M4 3h12v14H4V3zm3 4h6M7 10h6M7 13h3",
+  settings: "M10 12.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5zM10 2.5v2M10 15.5v2M2.5 10h2M15.5 10h2M4.7 4.7l1.4 1.4M13.9 13.9l1.4 1.4M4.7 15.3l1.4-1.4M13.9 6.1l1.4-1.4",
 };
 
 export function NavIcon({ name, className }) {

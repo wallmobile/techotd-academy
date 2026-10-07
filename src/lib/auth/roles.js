@@ -44,3 +44,5 @@ export const AREA_ROLES = {
 export function rolesForArea(area) {
   return AREA_ROLES[area] || [];
 }
+
+export { ROLE_LABELS, ADMIN_MANAGEMENT_ROLES } from "@/constants/roles";
