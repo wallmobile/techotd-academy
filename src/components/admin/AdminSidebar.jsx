@@ -8,7 +8,7 @@ import { logoutAction } from "@/lib/auth/actions";
 import { cn } from "@/lib/utils";
 
 /** Admin counterpart of TrainerSidebar: persistent desktop/tablet sidebar with a compact mode. */
-export function AdminSidebar({ canManage, collapsed, onToggleCollapsed }) {
+export function AdminSidebar({ role, collapsed, onToggleCollapsed }) {
   return (
     <aside
       className={cn(
@@ -26,7 +26,7 @@ export function AdminSidebar({ canManage, collapsed, onToggleCollapsed }) {
       </div>
 
       <div className="flex-1 overflow-y-auto px-3 py-4">
-        <AdminNavList canManage={canManage} compact={collapsed} />
+        <AdminNavList role={role} compact={collapsed} />
       </div>
 
       <div className="flex flex-col gap-2 border-t border-border p-3">

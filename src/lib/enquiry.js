@@ -1,30 +1,22 @@
 /**
  * Lead/enquiry submission boundary.
  *
- * Phase 6 has no backend, API or database — there is nowhere for a
- * lead to actually be persisted yet. `submitEnquiry` is the single
- * place the UI calls to "submit" a form, so that boundary is easy to
- * swap for a real API call later without touching any form component:
+ * Since Phase 10.2 this is real: every public form calls submitEnquiry(),
+ * which invokes a Server Action that re-validates the payload on the server
+ * and stores a lead in the database (see src/lib/crm/submit.js):
  *
- *   Frontend → submitEnquiry() → (future) API → Lead Service → DB/CRM
+ *   Form -> submitEnquiry() -> submitEnquiryAction -> submitLead -> leads table -> Admin CRM
  *
- * For now it only validates shape, simulates a brief round trip, and
- * returns a result the UI can show — it never claims the lead was
- * saved, a counsellor was notified, or any message was sent.
+ * `ok: true` is returned only after the database write succeeded (or the
+ * request was an accidental duplicate of one that already did). It never
+ * claims a counsellor was notified or any message was sent — no email/SMS
+ * integration exists.
  */
 
-export const KNOWN_SOURCES = [
-  "homepage",
-  "course-detail",
-  "training",
-  "batches",
-  "navbar",
-  "trainers",
-  "career",
-  "resources",
-  "about",
-  "direct",
-];
+import { KNOWN_SOURCES } from "@/constants/enquirySources";
+import { submitEnquiryAction } from "@/lib/enquiryActions";
+
+export { KNOWN_SOURCES };
 
 export function normalizeSource(value) {
   return KNOWN_SOURCES.includes(value) ? value : "direct";
@@ -32,18 +24,13 @@ export function normalizeSource(value) {
 
 /**
  * @param {object} payload
+ * @param {"book-demo" | "enquiry" | "quick"} variant which form is submitting
  * @returns {Promise<{ ok: true, receivedAt: string } | { ok: false, error: string }>}
  */
-export async function submitEnquiry(payload) {
-  if (!payload || typeof payload !== "object") {
-    return { ok: false, error: "Invalid submission." };
+export async function submitEnquiry(payload, variant) {
+  try {
+    return await submitEnquiryAction(payload, variant);
+  } catch {
+    return { ok: false, error: "We couldn't submit your request right now. Please try again." };
   }
-
-  // Simulate a brief round trip so the submit state feels real without
-  // pretending there's a live backend behind it.
-  await new Promise((resolve) => setTimeout(resolve, 400));
-
-  // Phase 6: no server call happens here yet. This is where a future
-  // phase would POST `payload` to a real API route.
-  return { ok: true, receivedAt: new Date().toISOString() };
 }

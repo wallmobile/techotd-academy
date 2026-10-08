@@ -2,6 +2,7 @@ import { requireAdminContext } from "@/lib/admin/context";
 import { getAdminDashboardData } from "@/lib/admin/dashboard";
 import { ROLES, ROLE_HOME_ROUTES, AREA_ROLES } from "@/lib/auth/roles";
 import { ROLE_LABELS, ADMIN_MANAGEMENT_ROLES } from "@/constants/roles";
+import { CRM_ROLES, CRM_MANAGER_ROLES } from "@/constants/crm";
 import { AdminShell } from "@/components/admin/AdminShell";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { AdminDataList } from "@/components/admin/AdminDataList";
@@ -36,6 +37,12 @@ export default async function AdminRolesPage() {
       render: (r) =>
         ADMIN_MANAGEMENT_ROLES.includes(r.role) ? <Badge variant="success">Full</Badge> : <Badge variant="neutral">None</Badge>,
     },
+    {
+      key: "crm",
+      label: "Leads / CRM",
+      render: (r) =>
+        CRM_MANAGER_ROLES.includes(r.role) ? <Badge variant="success">All leads</Badge> : CRM_ROLES.includes(r.role) ? <Badge variant="primary">Assigned + unassigned</Badge> : <Badge variant="neutral">None</Badge>,
+    },
     { key: "users", label: "Users", render: (r) => counts[r.role] ?? 0 },
   ];
 
@@ -54,6 +61,7 @@ export default async function AdminRolesPage() {
               Users, Students, Trainers and Roles pages.
             </li>
             <li>Other staff roles can sign in to the Admin area but only see a limited dashboard until their modules exist.</li>
+            <li>Counsellors can use Leads / CRM only: they see leads assigned to them plus the unassigned queue, and can change status and add notes only on leads assigned to them.</li>
             <li>Students and Trainers can never open the Admin area; they are sent back to their own area.</li>
             <li>Every Admin page and action re-checks the signed-in user on the server.</li>
           </ul>

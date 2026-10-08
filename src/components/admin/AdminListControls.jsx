@@ -49,10 +49,13 @@ export function AdminSearchForm({ basePath, params, searchLabel, showRoleFilter 
 
 function hrefFor(basePath, params, page) {
   const search = new URLSearchParams();
-  if (params.q) search.set("q", params.q);
-  if (params.role) search.set("role", params.role);
-  if (params.sort && params.sort !== "newest") search.set("sort", params.sort);
-  if (page > 1) search.set("page", String(page));
+  // Preserve every active filter (q, role, status, course, …); page is set below.
+  for (const [key, value] of Object.entries(params)) {
+    if (key === 'page' || !value) continue;
+    if (key === 'sort' && value === 'newest') continue;
+    search.set(key, String(value));
+  }
+  if (page > 1) search.set('page', String(page));
   const qs = search.toString();
   return qs ? `${basePath}?${qs}` : basePath;
 }

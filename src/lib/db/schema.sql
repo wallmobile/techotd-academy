@@ -407,3 +407,55 @@ CREATE TABLE IF NOT EXISTS trainer_batch_assignments (
 
 CREATE INDEX IF NOT EXISTS idx_trainer_batch_assignments_trainer_id ON trainer_batch_assignments (trainer_user_id);
 CREATE INDEX IF NOT EXISTS idx_trainer_batch_assignments_batch_id ON trainer_batch_assignments (batch_id);
+
+-- --------------------------------------------------------------------------
+-- CRM leads + internal notes (Phase 10.2)
+--
+-- ONE table for every public enquiry (`source` distinguishes the Book Demo
+-- form from the Enquiry form; `origin` is the page tag the form already
+-- carries). No UNIQUE on phone/email: the same person may legitimately
+-- enquire more than once — accidental double-submits are collapsed at the
+-- service layer instead (src/lib/crm/submit.js). `course_slug` / `mode` /
+-- `batch_id` follow this schema's non-FK catalog-reference convention
+-- (src/data/*) and are validated against the live catalog on write.
+-- `status` and `source` are validated in code against src/constants/crm.js;
+-- the browser can never choose a status. Both tables are new, so existing
+-- databases pick them up via CREATE TABLE IF NOT EXISTS with no data
+-- touched. lead_notes are internal staff notes and are never shown outside
+-- the CRM.
+-- --------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS leads (
+  id                 TEXT PRIMARY KEY,
+  name               TEXT NOT NULL,
+  phone              TEXT NOT NULL,
+  email              TEXT NOT NULL,
+  organization       TEXT,
+  city               TEXT,
+  experience_level   TEXT,
+  course_slug        TEXT,
+  mode               TEXT,
+  batch_id           TEXT,
+  message            TEXT,
+  source             TEXT NOT NULL,
+  origin             TEXT,
+  consent            INTEGER NOT NULL DEFAULT 0,
+  status             TEXT NOT NULL DEFAULT 'NEW',
+  assigned_to        TEXT REFERENCES users (id) ON DELETE SET NULL,
+  created_at         TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at         TEXT NOT NULL DEFAULT (datetime('now')),
+  last_contacted_at  TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_leads_status ON leads (status);
+CREATE INDEX IF NOT EXISTS idx_leads_assigned_to ON leads (assigned_to);
+CREATE INDEX IF NOT EXISTS idx_leads_created_at ON leads (created_at);
+
+CREATE TABLE IF NOT EXISTS lead_notes (
+  id              TEXT PRIMARY KEY,
+  lead_id         TEXT NOT NULL REFERENCES leads (id) ON DELETE CASCADE,
+  author_user_id  TEXT REFERENCES users (id) ON DELETE SET NULL,
+  note            TEXT NOT NULL,
+  created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_lead_notes_lead_id ON lead_notes (lead_id);

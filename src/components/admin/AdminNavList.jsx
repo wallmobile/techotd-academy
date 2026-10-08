@@ -9,13 +9,13 @@ import { cn } from "@/lib/utils";
 /**
  * Admin equivalent of TrainerNavList: active-route highlighting,
  * compact/icon-only mode, and "Soon" items rendered as non-interactive
- * spans (never links). `canManage` hides manager-only items from staff
- * roles that only get the limited dashboard — presentation only; the
+ * spans (never links). `role` hides items the signed-in staff role
+ * can't use (e.g. counsellors only get Dashboard + Leads) — presentation only; the
  * routes themselves enforce access server-side.
  */
-export function AdminNavList({ canManage = false, compact = false, onNavigate, className }) {
+export function AdminNavList({ role, compact = false, onNavigate, className }) {
   const pathname = usePathname();
-  const items = adminNavItems.filter((item) => canManage || !item.managerOnly);
+  const items = adminNavItems.filter((item) => !item.roles || item.roles.includes(role));
 
   return (
     <nav aria-label="Admin navigation" className={cn("flex flex-col gap-1", className)}>

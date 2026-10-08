@@ -39,7 +39,7 @@ export function EnquirySuccess({ name, onReset }) {
         Thank you{name ? `, ${name}` : ""}.
       </h2>
       <p className="max-w-sm text-sm leading-relaxed text-muted">
-        Your details have been captured for this request. We&apos;ll be in
+        Your request has been submitted successfully. We&apos;ll be in
         touch to follow up.
       </p>
       <div className="mt-3 flex flex-wrap items-center justify-center gap-3">

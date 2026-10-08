@@ -13,7 +13,7 @@ import { useDialogA11y } from "@/lib/useDialogA11y";
  * drawers, using the shared useDialogA11y hook (Escape, scroll lock, Tab
  * trap, focus restored to the opening button on close).
  */
-export function AdminMobileDrawer({ open, onClose, canManage }) {
+export function AdminMobileDrawer({ open, onClose, role }) {
   const panelRef = useRef(null);
 
   useDialogA11y({ open, onClose, panelRef });
@@ -58,7 +58,7 @@ export function AdminMobileDrawer({ open, onClose, canManage }) {
             </div>
 
             <div className="flex-1 px-3 py-4">
-              <AdminNavList canManage={canManage} onNavigate={onClose} />
+              <AdminNavList role={role} onNavigate={onClose} />
             </div>
 
             <div className="border-t border-border p-4">

@@ -101,7 +101,7 @@ const rise = (index) => ({
 
 /**
  * Shared form for /book-demo and /enquiry. `variant` decides which
- * optional fields render; both call the same submitEnquiry() boundary.
+ * optional fields render; both call the same submitEnquiry() boundary, which now persists a lead.
  */
 export function EnquiryForm({ variant, initialCourse, initialMode, initialBatch, source }) {
   const [values, setValues] = useState({
@@ -169,7 +169,7 @@ export function EnquiryForm({ variant, initialCourse, initialMode, initialBatch,
       consent: values.consent,
     };
 
-    const result = await submitEnquiry(payload);
+    const result = await submitEnquiry(payload, variant);
 
     if (result.ok) {
       setSubmittedName(payload.name);

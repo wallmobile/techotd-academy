@@ -4,7 +4,6 @@ import { useState } from "react";
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
 import { AdminMobileDrawer } from "@/components/admin/AdminMobileDrawer";
 import { AdminHeader } from "@/components/admin/AdminHeader";
-import { ADMIN_MANAGEMENT_ROLES } from "@/constants/roles";
 
 /**
  * Admin shell: sidebar (desktop/tablet) + drawer (mobile) + header +
@@ -17,12 +16,12 @@ import { ADMIN_MANAGEMENT_ROLES } from "@/constants/roles";
 export function AdminShell({ user, title, children }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
-  const canManage = ADMIN_MANAGEMENT_ROLES.includes(user.role);
+  const role = user.role;
 
   return (
     <div className="flex min-h-screen bg-surface">
-      <AdminSidebar canManage={canManage} collapsed={collapsed} onToggleCollapsed={() => setCollapsed((v) => !v)} />
-      <AdminMobileDrawer canManage={canManage} open={mobileOpen} onClose={() => setMobileOpen(false)} />
+      <AdminSidebar role={role} collapsed={collapsed} onToggleCollapsed={() => setCollapsed((v) => !v)} />
+      <AdminMobileDrawer role={role} open={mobileOpen} onClose={() => setMobileOpen(false)} />
 
       <div className="flex min-w-0 flex-1 flex-col">
         <AdminHeader user={user} title={title} onOpenMobileNav={() => setMobileOpen(true)} />

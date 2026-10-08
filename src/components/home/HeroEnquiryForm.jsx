@@ -57,9 +57,9 @@ function BookIcon() {
  * Deliberately reuses the same submitEnquiry() boundary and
  * validateEnquiryForm() rules (via the "quick" variant, which only skips
  * the separate consent checkbox — a static line covers the same consent
- * intent here) rather than duplicating validation or invention a second
- * submission path. Still an honest stub: nothing is persisted yet, and
- * the success state never claims otherwise.
+ * intent here) rather than duplicating validation or inventing a second
+ * submission path. Submissions are stored as leads (source ENQUIRY,
+ * origin "homepage"); the success state still promises nothing beyond receipt.
  */
 export function HeroEnquiryForm() {
   const [values, setValues] = useState(EMPTY_VALUES);
@@ -89,7 +89,7 @@ export function HeroEnquiryForm() {
       consent: true,
     };
 
-    const result = await submitEnquiry(payload);
+    const result = await submitEnquiry(payload, "quick");
 
     if (result.ok) {
       setSubmittedName(payload.name);

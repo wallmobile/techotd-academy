@@ -1,5 +1,6 @@
 import { Badge } from "@/components/ui/Badge";
 import { ROLE_LABELS } from "@/constants/roles";
+import { LEAD_STATUS_LABELS } from "@/constants/crm";
 
 const STATUS_VARIANT = { ACTIVE: "success", INACTIVE: "neutral", SUSPENDED: "danger" };
 
@@ -67,4 +68,17 @@ export function AdminDataList({ columns, rows, caption, rowKey = (row) => row.id
       </ul>
     </>
   );
+}
+
+const LEAD_STATUS_VARIANT = {
+  NEW: "primary",
+  CONTACTED: "neutral",
+  QUALIFIED: "secondary",
+  FOLLOW_UP: "warning",
+  CONVERTED: "success",
+  LOST: "danger",
+};
+
+export function LeadStatusBadge({ status }) {
+  return <Badge variant={LEAD_STATUS_VARIANT[status] || "neutral"}>{LEAD_STATUS_LABELS[status] || status}</Badge>;
 }

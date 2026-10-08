@@ -275,9 +275,79 @@ tokens or reset tokens. No schema change was needed in this phase.
 changes, account status changes, trainer assignments, financial actions and
 certificate actions.
 
-**Still deferred:** CRM/leads, enrollment creation, payments, certificate
+**Still deferred (as of 10.1; CRM/leads since landed in 10.2):** enrollment creation, payments, certificate
 issuing, placement, materials, announcements, advanced analytics,
 notification automation, content management.
+
+## Phase 10.2 — CRM / Leads + Enquiry Persistence
+
+The Book Demo (`/book-demo`), Enquiry (`/enquiry`) and homepage quick-enquiry
+forms now store real leads. The forms look and behave exactly as before; only
+the persistence boundary changed:
+
+```text
+Form -> submitEnquiry() -> Server Action -> server validation -> leads table -> /admin/leads
+```
+
+- **Success is shown only after the database write succeeds.** On failure the
+  visitor sees "We couldn't submit your request right now. Please try again."
+  — no SQL, paths or stack traces; server logs contain only an error code.
+- **Server-side validation** re-runs the existing `validateEnquiry.js` rules
+  and checks `course`, `mode` and `batch` against the live catalog (and that
+  the batch belongs to the course). Unknown values are rejected, never stored.
+  Status, assignment and id can't be supplied by the browser: a new lead is
+  always `NEW` and unassigned, with a generated UUID.
+- **Duplicates:** there is deliberately no `UNIQUE(phone/email)` — the same
+  person can enquire again. An identical request (same contact, course, mode,
+  batch, message and form) within 60 seconds is treated as an accidental
+  double-submit and stored once.
+
+**Data model** (new tables only; `CREATE TABLE IF NOT EXISTS`, no existing
+data touched): `leads` (name, phone, email, organization, city,
+experience_level, course_slug, mode, batch_id, message, source, origin,
+consent, status, assigned_to, created_at, updated_at, last_contacted_at) and
+`lead_notes` (lead_id, author_user_id, note, created_at).
+
+- **Statuses:** `NEW`, `CONTACTED`, `QUALIFIED`, `FOLLOW_UP`, `CONVERTED`, `LOST`.
+- **Sources:** `BOOK_DEMO`, `ENQUIRY` (the homepage widget is an `ENQUIRY`).
+  `origin` records the page tag the form already carried (`homepage`,
+  `course-detail`, `training`, …, else `direct`).
+
+**CRM routes** (`noindex, nofollow`): `/admin/leads` and
+`/admin/leads/[lead-id]`, inside the existing Admin shell ("Leads / CRM" in
+the sidebar).
+
+- **List:** search (name / email / phone, wildcards treated literally),
+  filters (status, source, course, mode, assigned-to), sort
+  (newest / oldest / name), 20 per page, and a real per-status count row.
+  Course/mode/assignee filter options come from data that exists. Internal
+  notes are never shown in the list.
+- **Detail:** contact, interest (course, mode, batch, message, source, page,
+  consent), CRM state (status, assignee, received / updated / last contacted)
+  and the internal-notes timeline.
+- **Actions** (Server Actions, re-authorized on every call): update status
+  (fixed list), *Mark as contacted* (the only thing that sets
+  `last_contacted_at` — a plain status change never does), assign / unassign,
+  add note (1–2000 characters, author and time recorded).
+
+**Access policy.**
+
+| Role | Leads |
+| --- | --- |
+| SUPER_ADMIN, ADMIN | see every lead; change status, notes; assign to anyone valid |
+| COUNSELLOR | see leads assigned to them **plus the unassigned queue**; change status / mark contacted / add notes **only on leads assigned to them**; may *claim* an unassigned lead for themselves; cannot assign to others, unassign, or see/touch another counsellor's leads, assignments or notes |
+| Other staff roles, STUDENT, TRAINER, anonymous | no access (redirected / refused) |
+
+A lead can only be assigned to an **active** ADMIN, SUPER_ADMIN or COUNSELLOR.
+A counsellor gets no user / student / trainer / roles administration.
+
+**Not implemented (still deferred):** rate limiting / CAPTCHA (an in-memory
+limiter would be fragile; a durable one is future work, so submission
+spam-protection beyond the 60-second duplicate guard is not in place),
+email / SMS / WhatsApp, follow-up scheduling, lead scoring, pipelines,
+conversion analytics, lead-to-student enrollment, an audit log of CRM changes
+(status / assignment history), lead editing or deletion, and data-retention /
+export tooling for the personal data stored in leads.
 
 ## Phase Status
 
@@ -292,7 +362,8 @@ notification automation, content management.
   states for the student and trainer areas, drawer focus restoration, test
   safety net.
 - **Phase 10.1 — Admin Foundation: COMPLETE.** Real admin shell and dashboard, user/student/trainer management, trainer creation, trainer-batch assignment, read-only roles page, account activate/deactivate. See "Admin Area" below.
-- **Phase 10.2** CRM / leads + enquiry persistence — next, not started.
+- **Phase 10.2 — CRM / Leads + Enquiry Persistence: COMPLETE** (see above). Public forms persist leads; `/admin/leads` with status, assignment, notes and counsellor-scoped access.
+- **Phase 10.3** Student enrollment + batch operations — next, not started.
 
 ## Known Limitations
 
@@ -300,7 +371,7 @@ notification automation, content management.
   content** (batch dates are illustrative — see `src/data/batches.js`).
   Confirm real figures before any public launch.
 - Trainer accounts can be created and assigned to batches from the Admin area; the `setup:trainer` CLI remains a local development shortcut.
-- Enquiry/demo-booking forms do not persist submissions yet.
+- Lead submissions are stored, but there is no email/SMS/WhatsApp notification, rate limiting or CAPTCHA yet (see Phase 10.2). Leads cannot be edited, deleted or exported from the UI.
 - No avatar upload / trainer profile (Phase 9.3, deferred).
 - Batch status is static catalog data; there is no real enrollment flow and
   no real lesson content — students are enrolled by data seeding only.

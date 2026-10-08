@@ -9,6 +9,8 @@ import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ROLE_LABELS } from "@/constants/roles";
+import { CRM_ROLES } from "@/constants/crm";
+import { Button } from "@/components/ui/Button";
 import { formatDbDate } from "@/lib/utils";
 
 export const metadata = {
@@ -27,10 +29,20 @@ export default async function AdminDashboardPage() {
       <AdminShell user={user} title="Dashboard">
         <div className="flex flex-col gap-6">
           <AdminPageHeader title={`Welcome, ${user.name}`} description={`Signed in as ${ROLE_LABELS[user.role] || user.role}.`} />
-          <EmptyState
-            title="No modules available for your role yet"
-            description="Administration modules for your role haven't been built yet. Platform administration is currently limited to Admin and Super Admin accounts."
-          />
+          {CRM_ROLES.includes(user.role) ? (
+            <Card className="max-w-md">
+              <h2 className="text-sm font-semibold text-dark">Leads / CRM</h2>
+              <p className="mt-1 text-sm text-muted">Follow up on enquiries and demo requests assigned to you.</p>
+              <div className="mt-4">
+                <Button href="/admin/leads">Open Leads</Button>
+              </div>
+            </Card>
+          ) : (
+            <EmptyState
+              title="No modules available for your role yet"
+              description="Administration modules for your role haven't been built yet. Platform administration is currently limited to Admin and Super Admin accounts."
+            />
+          )}
         </div>
       </AdminShell>
     );
