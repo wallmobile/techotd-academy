@@ -4,8 +4,10 @@ import { getLeadDetail } from "@/lib/crm/leads";
 import { AdminShell } from "@/components/admin/AdminShell";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { LeadStatusBadge } from "@/components/admin/AdminDataList";
-import { LeadStatusForm, MarkContactedForm, AssignLeadForm, ClaimLeadForm, LeadNoteForm } from "@/components/admin/LeadForms";
+import Link from "next/link";
+import { LeadStatusForm, MarkContactedForm, AssignLeadForm, ClaimLeadForm, LeadNoteForm, ConvertLeadForm } from "@/components/admin/LeadForms";
 import { Card } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
 import { LEAD_SOURCE_LABELS } from "@/constants/crm";
 import { formatDbDate } from "@/lib/utils";
 
@@ -21,7 +23,7 @@ export default async function AdminLeadDetailPage({ params }) {
   const detail = await getLeadDetail(leadId);
   if (!detail) notFound();
 
-  const { lead, batchLabel, notes, permissions, assignees } = detail;
+  const { lead, batchLabel, notes, permissions, assignees, canConvert, convertedStudent } = detail;
 
   return (
     <AdminShell user={user} title="Leads / CRM">
@@ -94,6 +96,54 @@ export default async function AdminLeadDetailPage({ params }) {
             </div>
           </Card>
         </div>
+
+        {canConvert && (
+          <Card>
+            <h2 className="text-sm font-semibold text-dark">Convert to student</h2>
+            <p className="mt-1 text-sm text-muted">Creates (or links) the student account for this lead and marks the lead Converted. You can enroll them in a batch right after.</p>
+            <div className="mt-4 max-w-md">
+              <ConvertLeadForm leadId={lead.id} />
+            </div>
+          </Card>
+        )}
+
+        {convertedStudent && (
+          <Card>
+            <h2 className="text-sm font-semibold text-dark">Converted student</h2>
+            <dl className="mt-4 flex flex-col gap-2.5 text-sm">
+              <Row label="Student">
+                <Link href={`/admin/students/${convertedStudent.id}`} className="text-primary hover:text-primary-hover">
+                  {convertedStudent.name}
+                </Link>
+              </Row>
+              <Row label="Email">{convertedStudent.email}</Row>
+              <Row label="Converted">{formatDbDate(lead.convertedAt)}</Row>
+            </dl>
+            <h3 className="mt-5 text-xs font-medium uppercase tracking-wide text-muted">Enrollments</h3>
+            {convertedStudent.enrollments.length === 0 ? (
+              <p className="mt-2 text-sm text-muted">Not enrolled in any batch yet.</p>
+            ) : (
+              <ul className="mt-2 divide-y divide-border">
+                {convertedStudent.enrollments.map((e) => (
+                  <li key={e.id} className="flex items-center justify-between gap-3 py-2 text-sm">
+                    <Link href={`/admin/enrollments/${e.id}`} className="min-w-0 break-words text-text hover:text-primary">
+                      {e.courseTitle} — {e.batchLabel}
+                    </Link>
+                    <span className="flex-none text-xs text-muted">{e.status}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="mt-4">
+              <Button
+                href={`/admin/enrollments/new?student=${convertedStudent.id}${lead.courseSlug ? `&course=${lead.courseSlug}` : ""}${lead.batchId ? `&batch=${lead.batchId}` : ""}`}
+                size="sm"
+              >
+                + Enroll student
+              </Button>
+            </div>
+          </Card>
+        )}
 
         <Card>
           <h2 className="text-sm font-semibold text-dark">Internal notes</h2>

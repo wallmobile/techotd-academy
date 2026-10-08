@@ -10,6 +10,7 @@ import {
   listRecentUsers,
   pingDatabase,
 } from "@/lib/db/adminQueries";
+import { countEnrollmentsByStatus } from "@/lib/db/enrollments";
 import { ROLES } from "@/lib/auth/roles";
 
 export async function getAdminDashboardData() {
@@ -40,6 +41,7 @@ export async function getAdminDashboardData() {
     },
     roleDistribution,
     statusCounts: countUsersByStatus(),
+    enrollments: countEnrollmentsByStatus(),
     recentUsers: listRecentUsers(5),
     system: { databaseOk },
   };

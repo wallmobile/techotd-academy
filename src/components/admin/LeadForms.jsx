@@ -4,6 +4,7 @@ import { useActionState, useEffect, useRef } from "react";
 import { useFormStatus } from "react-dom";
 import { Select } from "@/components/ui/Select";
 import { Textarea } from "@/components/ui/Textarea";
+import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { LEAD_STATUSES, LEAD_STATUS_LABELS, NOTE_MAX_LENGTH } from "@/constants/crm";
 import {
@@ -11,6 +12,7 @@ import {
   markLeadContactedAction,
   assignLeadAction,
   addLeadNoteAction,
+  convertLeadAction,
 } from "@/lib/crm/actions";
 
 const idle = { status: "idle" };
@@ -130,6 +132,35 @@ export function LeadNoteForm({ leadId }) {
       <Textarea label="Add an internal note" id="note" name="note" rows={3} maxLength={NOTE_MAX_LENGTH} required />
       <div>
         <Submit>Add note</Submit>
+      </div>
+      <Feedback state={state} />
+    </form>
+  );
+}
+
+/**
+ * Convert to student. The password is only used if no student account with
+ * this email exists yet; the server decides, and never echoes it back.
+ */
+export function ConvertLeadForm({ leadId }) {
+  const [state, action] = useActionState(convertLeadAction, idle);
+  return (
+    <form action={action} className="flex flex-col gap-3">
+      <input type="hidden" name="leadId" value={leadId} />
+      <Input
+        label="Temporary password (for a new account)"
+        id="password"
+        name="password"
+        type="password"
+        autoComplete="new-password"
+        minLength={8}
+      />
+      <p className="text-xs text-muted">
+        If a student account with this email already exists it is reused and this password is ignored. Otherwise a student account is created
+        with this password (minimum 8 characters) — share it with the student securely; nothing is emailed.
+      </p>
+      <div>
+        <Submit>Convert to student</Submit>
       </div>
       <Feedback state={state} />
     </form>

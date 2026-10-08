@@ -7,7 +7,7 @@
 // return a generic refusal and write nothing.
 
 import { revalidatePath } from "next/cache";
-import { updateLeadStatus, markLeadContacted, assignLead, addNote } from "@/lib/crm/leads";
+import { updateLeadStatus, markLeadContacted, assignLead, addNote, convertLeadToStudent } from "@/lib/crm/leads";
 
 function field(formData, name) {
   const value = formData.get(name);
@@ -18,6 +18,11 @@ function finish(result, message) {
   if (!result.ok) return { status: "error", formError: result.reason || "Something went wrong." };
   revalidatePath(`/admin/leads/${result.leadId}`);
   revalidatePath("/admin/leads");
+  if (result.userId) {
+    revalidatePath("/admin/students");
+    revalidatePath("/admin/users");
+    revalidatePath("/admin");
+  }
   return { status: "success", message };
 }
 
@@ -35,4 +40,12 @@ export async function assignLeadAction(_prev, formData) {
 
 export async function addLeadNoteAction(_prev, formData) {
   return finish(await addNote(field(formData, "leadId"), field(formData, "note")), "Note added.");
+}
+
+export async function convertLeadAction(_prev, formData) {
+  const result = await convertLeadToStudent(field(formData, "leadId"), field(formData, "password"));
+  return finish(
+    result,
+    result.created ? "Lead converted — a new student account was created." : "Lead converted — linked to the existing student account."
+  );
 }

@@ -443,7 +443,11 @@ CREATE TABLE IF NOT EXISTS leads (
   assigned_to        TEXT REFERENCES users (id) ON DELETE SET NULL,
   created_at         TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at         TEXT NOT NULL DEFAULT (datetime('now')),
-  last_contacted_at  TEXT
+  last_contacted_at  TEXT,
+  -- Phase 10.3: set when the lead is converted to a student account. Existing
+  -- databases get these via the guarded migration in src/lib/db/client.js.
+  converted_user_id  TEXT REFERENCES users (id) ON DELETE SET NULL,
+  converted_at       TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_leads_status ON leads (status);

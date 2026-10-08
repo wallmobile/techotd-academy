@@ -48,7 +48,7 @@ export default async function AdminDashboardPage() {
     );
   }
 
-  const { stats, roleDistribution, recentUsers, statusCounts, system } = data;
+  const { stats, roleDistribution, recentUsers, statusCounts, system, enrollments } = data;
   const maxRole = Math.max(1, ...roleDistribution.map((r) => r.count));
   const notActive = (statusCounts.INACTIVE || 0) + (statusCounts.SUSPENDED || 0);
 
@@ -66,6 +66,17 @@ export default async function AdminDashboardPage() {
             { label: "Signed-in users", value: stats.usersWithActiveSession, hint: "With an unexpired session" },
           ]}
         />
+
+        <div>
+          <h2 className="mb-3 text-sm font-semibold text-dark">Enrollments</h2>
+          <AdminStatsGrid
+            stats={[
+              { label: "Active", value: enrollments.ACTIVE },
+              { label: "Completed", value: enrollments.COMPLETED },
+              { label: "Cancelled", value: enrollments.CANCELLED },
+            ]}
+          />
+        </div>
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <Card>

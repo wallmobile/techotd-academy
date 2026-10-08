@@ -5,6 +5,10 @@
 // nothing. Pages never touch SQL.
 
 import { getCrmContext, canViewLead, canModifyLead } from "@/lib/crm/context";
+import { hashPassword } from "@/lib/auth/password";
+import { findUserByEmailInternal } from "@/lib/db/users";
+import { getEnrollmentsForConvertedStudent } from "@/lib/crm/convertedStudent";
+import { PASSWORD_MIN_LENGTH } from "@/lib/validateAuth";
 import {
   listLeads,
   getLeadById,
@@ -17,6 +21,7 @@ import {
   listActiveUsersWithRoles,
   getUserNameRole,
   listDistinctLeadValues,
+  convertLeadTx,
 } from "@/lib/db/leads";
 import { LEAD_STATUSES, LEAD_ASSIGNABLE_ROLES, NOTE_MAX_LENGTH, LEADS_PAGE_SIZE } from "@/constants/crm";
 import { getCourseBySlug } from "@/data/courses";
@@ -101,6 +106,10 @@ export async function getLeadDetail(leadId) {
       canClaim: !ctx.isManager && lead.assignedTo === null,
     },
     assignees: ctx.isManager ? listActiveUsersWithRoles(LEAD_ASSIGNABLE_ROLES) : [],
+    // Conversion is a manager-only operation (it creates accounts); the
+    // converted-student card is shown to managers only.
+    canConvert: ctx.isManager && !lead.convertedUserId,
+    convertedStudent: ctx.isManager && lead.convertedUserId ? getEnrollmentsForConvertedStudent(lead.convertedUserId) : null,
   };
 }
 
@@ -169,4 +178,51 @@ export async function addNote(leadId, rawNote) {
   if (error) return error;
   addLeadNoteRow({ leadId: lead.id, authorUserId: ctx.user.id, note });
   return { ok: true, leadId: lead.id };
+}
+
+const CONVERT_MESSAGES = {
+  not_found: "Lead not found.",
+  already_converted: "This lead has already been converted.",
+  email_taken: "An account with this email was just created. Please try again.",
+  other_role: "An account with this email already exists and is not a student account. It was not changed — resolve it under Users first.",
+  inactive: "A student account with this email exists but is not active. Reactivate it under Users, then convert again.",
+  password: `Enter a temporary password of at least ${PASSWORD_MIN_LENGTH} characters for the new student account.`,
+};
+
+// Lead -> student (ADMIN / SUPER_ADMIN only). Reuses an existing ACTIVE
+// STUDENT with the lead's email; refuses (changing nothing) if that email
+// belongs to any other role or an inactive account; otherwise creates a
+// STUDENT with the admin-supplied temporary password (hashed with the
+// app's bcryptjs hash; nothing is emailed — no mail provider exists). The
+// account, CONVERTED status and conversion link are written in one
+// transaction. Converting twice is refused.
+export async function convertLeadToStudent(leadId, rawPassword) {
+  const ctx = await getCrmContext();
+  if (!ctx || !ctx.isManager) return DENIED;
+
+  const lead = getLeadById(leadId);
+  if (!lead) return { ok: false, reason: CONVERT_MESSAGES.not_found };
+  if (lead.convertedUserId) return { ok: false, reason: CONVERT_MESSAGES.already_converted };
+
+  const existing = findUserByEmailInternal(lead.email);
+  let existingUserId = null;
+  let newStudent = null;
+  if (existing) {
+    if (existing.role !== "STUDENT") return { ok: false, reason: CONVERT_MESSAGES.other_role };
+    if (existing.status !== "ACTIVE") return { ok: false, reason: CONVERT_MESSAGES.inactive };
+    existingUserId = existing.id;
+  } else {
+    const password = typeof rawPassword === "string" ? rawPassword : "";
+    if (password.length < PASSWORD_MIN_LENGTH) return { ok: false, reason: CONVERT_MESSAGES.password };
+    newStudent = {
+      name: lead.name,
+      email: lead.email,
+      phone: lead.phone,
+      passwordHash: await hashPassword(password),
+    };
+  }
+
+  const result = convertLeadTx({ leadId: lead.id, existingUserId, newStudent });
+  if (!result.ok) return { ok: false, reason: CONVERT_MESSAGES[result.reason] || "Could not convert this lead." };
+  return { ok: true, leadId: lead.id, userId: result.userId, created: result.created };
 }

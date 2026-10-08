@@ -1,6 +1,7 @@
 import { Badge } from "@/components/ui/Badge";
 import { ROLE_LABELS } from "@/constants/roles";
 import { LEAD_STATUS_LABELS } from "@/constants/crm";
+import { ENROLLMENT_STATUS_LABELS } from "@/constants/enrollment";
 
 const STATUS_VARIANT = { ACTIVE: "success", INACTIVE: "neutral", SUSPENDED: "danger" };
 
@@ -81,4 +82,10 @@ const LEAD_STATUS_VARIANT = {
 
 export function LeadStatusBadge({ status }) {
   return <Badge variant={LEAD_STATUS_VARIANT[status] || "neutral"}>{LEAD_STATUS_LABELS[status] || status}</Badge>;
+}
+
+const ENROLLMENT_VARIANT = { ACTIVE: "success", COMPLETED: "primary", CANCELLED: "neutral" };
+
+export function EnrollmentStatusBadge({ status }) {
+  return <Badge variant={ENROLLMENT_VARIANT[status] || "neutral"}>{ENROLLMENT_STATUS_LABELS[status] || status}</Badge>;
 }

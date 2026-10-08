@@ -40,9 +40,24 @@ function resolveDatabasePath() {
 // table). Existing data is preserved; nothing is dropped or recreated.
 function migrate(db) {
   // Phase 9.4: assignments.created_by (authoring trainer).
-  const assignmentColumns = db.prepare("PRAGMA table_info(assignments)").all();
-  if (!assignmentColumns.some((c) => c.name === "created_by")) {
-    db.exec("ALTER TABLE assignments ADD COLUMN created_by TEXT REFERENCES users (id) ON DELETE SET NULL");
+  addColumnIfMissing(db, "assignments", "created_by", "TEXT REFERENCES users (id) ON DELETE SET NULL");
+
+  // Phase 10.3: lead -> student conversion reference (leads table is from 10.2).
+  addColumnIfMissing(db, "leads", "converted_user_id", "TEXT REFERENCES users (id) ON DELETE SET NULL");
+  addColumnIfMissing(db, "leads", "converted_at", "TEXT");
+}
+
+// `table`/`column`/`definition` are fixed literals from migrate() above,
+// never external input. Several processes can open the database at the same
+// moment (e.g. Next's parallel build workers), so losing the race to add the
+// column is expected and harmless: "duplicate column name" is swallowed.
+function addColumnIfMissing(db, table, column, definition) {
+  const columns = db.prepare(`PRAGMA table_info(${table})`).all();
+  if (columns.some((c) => c.name === column)) return;
+  try {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  } catch (error) {
+    if (!/duplicate column name/i.test(String(error?.message))) throw error;
   }
 }
 

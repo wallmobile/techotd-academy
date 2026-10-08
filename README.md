@@ -257,8 +257,8 @@ Settings) show "Soon" and have no routes.
 - **Roles & Access** — read-only overview. **Role editing is deferred**, and
   no user deletion exists (deactivate instead).
 - **Students** — read-only: profile, enrollments, progress, attendance,
-  submissions, certificates (existing data only). There is no enrollment
-  creation yet.
+  submissions, certificates. Enrollments are created from the Enrollments
+  area (Phase 10.3).
 
 **Security model.** Identity always comes from `getCurrentUser()` via
 `src/lib/admin/context.js`. Only ADMIN and SUPER_ADMIN
@@ -275,7 +275,7 @@ tokens or reset tokens. No schema change was needed in this phase.
 changes, account status changes, trainer assignments, financial actions and
 certificate actions.
 
-**Still deferred (as of 10.1; CRM/leads since landed in 10.2):** enrollment creation, payments, certificate
+**Still deferred (as of 10.1; CRM/leads landed in 10.2, enrollment in 10.3):** payments, certificate
 issuing, placement, materials, announcements, advanced analytics,
 notification automation, content management.
 
@@ -349,6 +349,83 @@ conversion analytics, lead-to-student enrollment, an audit log of CRM changes
 (status / assignment history), lead editing or deletion, and data-retention /
 export tooling for the personal data stored in leads.
 
+## Phase 10.3 — Student Enrollment + Batch Operations
+
+Admins can now enroll students and convert leads into students:
+
+```text
+Website lead -> CRM -> Convert to student -> Enroll (course + batch) -> Student LMS -> Trainer
+```
+
+**No new enrollment table.** An enrollment is the existing
+`batch_enrollments` row (student + batch; the course is the batch's course in
+the catalog) together with the student's `course_enrollments` row for that
+course. Creating one writes both in a single transaction; the student LMS
+(`/student/courses`, `/student/batches`, schedule, …) and the trainer student
+lists already read these tables, so they reflect admin enrollments
+automatically.
+
+- **Statuses:** `ACTIVE`, `COMPLETED`, `CANCELLED` (the values the tables
+  already used). Records are never deleted — cancelling sets `CANCELLED`, so
+  the rows are the history. The course-level status is *derived* from the
+  student's batch enrollments in that course (any ACTIVE -> ACTIVE, else any
+  COMPLETED -> COMPLETED, else CANCELLED).
+- **Server-side rules** (the form is only a convenience): the student exists,
+  is a `STUDENT` and is `ACTIVE`; the course is in the catalog; the batch
+  exists, **belongs to that course** and has status `Open` or `Upcoming`
+  (anything else, e.g. a future "Closed", is refused); no duplicate active
+  enrollment for the same student + batch. A cancelled enrollment is
+  re-activated in place (same row); a completed one is not re-created.
+  Moving an enrollment back to ACTIVE re-checks that the batch is still open.
+- **Batch capacity is NOT enforced:** the batch catalog (`src/data/batches.js`)
+  has no capacity field and none was invented. Capacity limits are deferred
+  until batches carry real seat counts.
+
+**Routes** (`noindex, nofollow`, ADMIN / SUPER_ADMIN only):
+`/admin/enrollments` (search by name / email / phone; filter by course,
+batch, status; sort; 20 per page; completed and cancelled included),
+`/admin/enrollments/new` (pick an active student by search, then course, then
+a batch of that course; supports `?student=&course=&batch=` prefill, validated
+server-side) and `/admin/enrollments/[enrollment-id]` (details + status
+change). The student page has **+ Enroll Student** and links each enrollment;
+the dashboard shows real Active / Completed / Cancelled counts.
+
+**Lead -> student conversion** (lead page, ADMIN / SUPER_ADMIN only — counsellors
+can work leads but cannot create accounts or enrollments):
+
+- Matches an existing account **by the lead's email**. An existing *active
+  STUDENT* is reused (nothing is duplicated and their password is untouched).
+  An account with that email that is **not** a student (or is inactive) is
+  never converted, changed or linked — the admin gets an explanatory error.
+- Otherwise a `STUDENT` is created through the existing user layer with an
+  admin-entered **temporary password** (min 8 chars, bcryptjs-hashed; shown
+  nowhere and never logged). Nothing is emailed — no mail provider exists —
+  so share the credentials securely.
+- The account, `leads.status = CONVERTED` and the link
+  (`leads.converted_user_id`, `converted_at`) are written in one transaction;
+  a lead can be converted only once. After conversion the lead page shows the
+  student, their enrollments and an **+ Enroll student** button that prefills
+  the lead's course and batch. (A lead whose status was merely *set* to
+  Converted by hand has no student link and can still be converted.)
+- Phone numbers are not used for matching (not unique, easy to mismatch).
+
+**Database change:** `leads.converted_user_id` and `leads.converted_at`
+(nullable). Added to `schema.sql` for new databases and by the idempotent
+migration in `src/lib/db/client.js` for existing ones — which now also
+tolerates two processes migrating at the same moment (Next's parallel build
+workers). No tables were dropped or recreated.
+
+**Access summary:** only ADMIN / SUPER_ADMIN create or change enrollments and
+convert leads. Trainers see only students enrolled in batches assigned to them
+(a cancelled enrollment disappears from their list). Students only ever see
+their own enrollments, derived from their session — no student id is accepted
+from the browser — and cannot change them.
+
+**Still deferred:** batch capacity, payments / invoices, certificates, bulk
+enrollment or CSV import, student self-enrollment, enrollment audit trail,
+email / SMS notifications of credentials or enrollment, and lead-to-student
+conversion by counsellors.
+
 ## Phase Status
 
 - **Phase 9.1** Trainer foundation — done.
@@ -363,7 +440,8 @@ export tooling for the personal data stored in leads.
   safety net.
 - **Phase 10.1 — Admin Foundation: COMPLETE.** Real admin shell and dashboard, user/student/trainer management, trainer creation, trainer-batch assignment, read-only roles page, account activate/deactivate. See "Admin Area" below.
 - **Phase 10.2 — CRM / Leads + Enquiry Persistence: COMPLETE** (see above). Public forms persist leads; `/admin/leads` with status, assignment, notes and counsellor-scoped access.
-- **Phase 10.3** Student enrollment + batch operations — next, not started.
+- **Phase 10.3 — Student Enrollment + Batch Operations: COMPLETE** (see above; batch capacity deferred — the catalog has none).
+- **Phase 10.4** — next, not started.
 
 ## Known Limitations
 
@@ -397,9 +475,9 @@ export tooling for the personal data stored in leads.
   notifications (the underlying flows are built and API-ready; sending
   real email needs a provider configured, which is intentionally out of
   scope so far).
-- The Admin area covers user, student and trainer management only
-  (Phase 10.1). Role editing, user deletion, an audit log, CRM, enrollment
-  creation, payments, certificate issuing, placement, content, reports and
+- The Admin area covers users, students, trainers, leads and enrollments
+  (Phases 10.1–10.3). Role editing, user deletion, an audit log, payments,
+  certificate issuing, placement, content, reports and
   settings are not built. Admin lists/forms have not been exercised in a real
   browser by automation (responsive layout and drawer focus restore are
   source-reviewed; live checks were HTTP-level).

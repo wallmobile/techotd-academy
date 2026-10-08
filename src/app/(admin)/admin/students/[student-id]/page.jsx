@@ -6,6 +6,8 @@ import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { StatusBadge } from "@/components/admin/AdminDataList";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import Link from "next/link";
 import { formatDbDate } from "@/lib/utils";
 
 export const metadata = {
@@ -24,7 +26,9 @@ export default async function AdminStudentDetailPage({ params }) {
   return (
     <AdminShell user={user} title="Students">
       <div className="flex flex-col gap-6">
-        <AdminPageHeader title={student.name} backHref="/admin/students" backLabel="Back to Students" />
+        <AdminPageHeader title={student.name} backHref="/admin/students" backLabel="Back to Students">
+          <Button href={`/admin/enrollments/new?student=${student.id}`}>+ Enroll Student</Button>
+        </AdminPageHeader>
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <Card>
@@ -55,7 +59,7 @@ export default async function AdminStudentDetailPage({ params }) {
         </div>
 
         <h2 className="text-base font-semibold text-dark">Learning</h2>
-        <p className="-mt-4 text-sm text-muted">Existing records only. Enrollment creation isn&apos;t available in the Admin area yet.</p>
+        <p className="-mt-4 text-sm text-muted">Course and batch enrollments, attendance, submissions and certificates.</p>
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <Card>
@@ -85,10 +89,10 @@ export default async function AdminStudentDetailPage({ params }) {
               <ul className="mt-3 divide-y divide-border">
                 {batches.map((b) => (
                   <li key={b.id} className="flex items-center justify-between gap-3 py-2.5 text-sm">
-                    <span className="min-w-0 break-words text-text">
+                    <Link href={`/admin/enrollments/${b.id}`} className="min-w-0 break-words text-text hover:text-primary">
                       {b.courseTitle || b.batchId}
                       {b.mode ? ` — ${b.mode}` : ""}
-                    </span>
+                    </Link>
                     <Badge variant="neutral">{b.status}</Badge>
                   </li>
                 ))}

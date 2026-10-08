@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { db } from "@/lib/db/client";
 import { LEAD_STATUSES } from "@/constants/crm";
+import { createUser, findUserByEmailInternal } from "@/lib/db/users";
 
 // Lead + lead-note persistence (Phase 10.2). All SQL is parameterized; the
 // only interpolated fragment is a sort order picked from a fixed whitelist.
@@ -38,6 +39,8 @@ function rowToLead(row) {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     lastContactedAt: row.last_contacted_at,
+    convertedUserId: row.converted_user_id ?? null,
+    convertedAt: row.converted_at ?? null,
   };
 }
 
@@ -232,4 +235,33 @@ export function listDistinctLeadValues(column, scopeUserId = null) {
     .prepare(`SELECT DISTINCT ${column} AS v FROM leads WHERE ${column} IS NOT NULL ${scope} ORDER BY v`)
     .all(scopeUserId ? { scopeUserId } : {})
     .map((r) => r.v);
+}
+
+// Lead -> student conversion (Phase 10.3), atomically: the student account
+// (when one is needed), the lead's CONVERTED status and the conversion
+// reference are written together or not at all. Re-checks inside the
+// transaction that the lead isn't already converted (idempotent under
+// double-clicks / races) and that the email wasn't taken in the meantime.
+// `newStudent` is { name, email, phone, passwordHash } when no account
+// exists; `existingUserId` when one does (already validated as an ACTIVE
+// STUDENT by the caller).
+export function convertLeadTx({ leadId, existingUserId, newStudent }) {
+  const run = db.transaction(() => {
+    const lead = db.prepare('SELECT converted_user_id FROM leads WHERE id = ?').get(leadId);
+    if (!lead) return { ok: false, reason: 'not_found' };
+    if (lead.converted_user_id) return { ok: false, reason: 'already_converted' };
+
+    let userId = existingUserId;
+    let created = false;
+    if (!userId) {
+      if (findUserByEmailInternal(newStudent.email)) return { ok: false, reason: 'email_taken' };
+      userId = createUser({ ...newStudent, role: 'STUDENT' }).id;
+      created = true;
+    }
+    db.prepare(
+      "UPDATE leads SET status = 'CONVERTED', converted_user_id = ?, converted_at = datetime('now'), updated_at = datetime('now') WHERE id = ?"
+    ).run(userId, leadId);
+    return { ok: true, userId, created };
+  });
+  return run();
 }

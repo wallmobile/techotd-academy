@@ -18,6 +18,7 @@ export const adminNavItems = [
   { key: "leads", label: "Leads / CRM", href: "/admin/leads", icon: "crm", comingSoon: false, roles: CRM_ROLES },
   { key: "users", label: "Users", href: "/admin/users", icon: "users", comingSoon: false, roles: MANAGERS },
   { key: "students", label: "Students", href: "/admin/students", icon: "students", comingSoon: false, roles: MANAGERS },
+  { key: "enrollments", label: "Enrollments", href: "/admin/enrollments", icon: "batches", comingSoon: false, roles: MANAGERS },
   { key: "trainers", label: "Trainers", href: "/admin/trainers", icon: "profile", comingSoon: false, roles: MANAGERS },
   { key: "roles", label: "Roles & Access", href: "/admin/roles", icon: "roles", comingSoon: false, roles: MANAGERS },
   { key: "courses", label: "Courses", href: "/admin/courses", icon: "courses", comingSoon: true, roles: MANAGERS },
