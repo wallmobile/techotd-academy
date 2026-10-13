@@ -33,6 +33,7 @@ import { computeCourseProgress } from "@/lib/student/progress";
 import { buildCertificatePdf } from "@/lib/certificates/pdf";
 import { getBatchById } from "@/data/batches";
 import { getCourseBySlug } from "@/data/courses";
+import { notifyCertificateIssued, notifyCertificateRevoked } from "@/lib/notifications/events";
 import { CERTIFICATES_PAGE_SIZE, APPROVAL_NOTE_MIN, NOTE_MAX_LENGTH } from "@/constants/certificates";
 
 const MESSAGES = {
@@ -174,6 +175,7 @@ export async function issueCertificate({ enrollmentId, mode, approvalNote }) {
     actorUserId: ctx.user.id,
   });
   if (!result.ok) return fail(result.reason, { certificateId: result.certificateId });
+  await notifyCertificateIssued({ userId: e.enrollment.userId, certificateId: result.certificateId, courseTitle: e.course.title });
   return { ok: true, certificateId: result.certificateId, certificateNumber: result.certificateNumber, studentUserId: e.enrollment.userId };
 }
 
@@ -183,8 +185,17 @@ export async function revokeCertificate({ certificateId, reason }) {
   const text = typeof reason === "string" ? reason.trim() : "";
   if (!text) return fail("reason_required");
   if (text.length > NOTE_MAX_LENGTH) return fail("note_long");
+  const before = getCertificateById(certificateId);
   const result = revokeCertificateTx({ certificateId, reason: text, actorUserId: ctx.user.id });
-  return result.ok ? { ok: true, certificateId } : fail(result.reason);
+  if (!result.ok) return fail(result.reason);
+  if (before?.studentUserId) {
+    await notifyCertificateRevoked({
+      userId: before.studentUserId,
+      certificateId,
+      courseTitle: getCourseBySlug(before.courseSlug)?.title ?? before.courseSlug,
+    });
+  }
+  return { ok: true, certificateId };
 }
 
 function describe(cert) {

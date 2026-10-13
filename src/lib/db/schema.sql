@@ -638,3 +638,36 @@ CREATE TABLE IF NOT EXISTS rate_limits (
 );
 
 CREATE INDEX IF NOT EXISTS idx_rate_limits_window_start ON rate_limits (window_start);
+
+-- --------------------------------------------------------------------------
+-- Notification delivery outbox (Phase 10.7)
+--
+-- The in-app notification itself lives in `notifications` (extended
+-- additively with `link` and `event_key` by migrate() in
+-- src/lib/db/client.js; UNIQUE(user_id, event_key) makes a retried business
+-- event create at most one notification). This table records the external
+-- channel attempt for a notification, one row per (notification, channel):
+--   QUEUED   waiting to be sent (or to be retried at next_attempt_at)
+--   SENDING  claimed by a worker (a stale SENDING row is treated as retryable)
+--   SENT     ACCEPTED by the provider — NOT proof of inbox delivery; no
+--            provider delivery webhook is wired, so "delivered" is never claimed
+--   FAILED   permanent failure or attempts exhausted (last_error = safe code)
+--   SKIPPED  not sent, with the reason in last_error (provider not
+--            configured, invalid recipient, inactive user, …)
+-- --------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS notification_deliveries (
+  id                   TEXT PRIMARY KEY,
+  notification_id      TEXT NOT NULL REFERENCES notifications (id) ON DELETE CASCADE,
+  channel              TEXT NOT NULL,
+  status               TEXT NOT NULL,
+  attempts             INTEGER NOT NULL DEFAULT 0,
+  max_attempts         INTEGER NOT NULL DEFAULT 3,
+  last_error           TEXT,
+  provider_message_id  TEXT,
+  next_attempt_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  created_at           TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at           TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (notification_id, channel)
+);
+
+CREATE INDEX IF NOT EXISTS idx_notification_deliveries_due ON notification_deliveries (status, next_attempt_at);

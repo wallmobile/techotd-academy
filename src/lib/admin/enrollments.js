@@ -18,6 +18,7 @@ import {
 import { ENROLLMENT_STATUSES, ENROLLABLE_BATCH_STATUSES, ENROLLMENTS_PAGE_SIZE } from "@/constants/enrollment";
 import { courses, getCourseBySlug } from "@/data/courses";
 import { batches, getBatchById } from "@/data/batches";
+import { notifyEnrolled, notifyEnrollmentStatus } from "@/lib/notifications/events";
 
 const FORBIDDEN = { ok: false, reason: "forbidden", message: "You don't have permission to do that." };
 const EMPTY_PAGE = { rows: [], page: 1, totalPages: 1, pageSize: ENROLLMENTS_PAGE_SIZE, total: 0 };
@@ -150,6 +151,14 @@ export async function createEnrollment({ studentUserId, courseSlug, batchId }) {
     batchId: batch.id,
   });
   if (!result.ok) return fail(result.reason);
+  // Notify only after the enrollment transaction committed.
+  const stamp = result.reactivated ? getEnrollmentById(result.enrollmentId)?.updatedAt ?? "" : "";
+  await notifyEnrolled({
+    userId: student.id,
+    enrollmentId: result.enrollmentId,
+    courseTitle: getCourseBySlug(courseSlug)?.title ?? courseSlug,
+    stamp,
+  });
   return { ok: true, enrollmentId: result.enrollmentId, studentUserId: student.id };
 }
 
@@ -173,5 +182,15 @@ export async function setEnrollmentStatus(enrollmentId, status) {
     courseSlug: batch.courseSlug,
     courseBatchIds: courseBatchIds(batch.courseSlug),
   });
+  // Only an actual change notifies (a repeated identical request is silent).
+  if (enrollment.status !== status) {
+    await notifyEnrollmentStatus({
+      userId: enrollment.studentUserId,
+      enrollmentId: enrollment.id,
+      status,
+      courseTitle: getCourseBySlug(batch.courseSlug)?.title ?? batch.courseSlug,
+      stamp: getEnrollmentById(enrollment.id)?.updatedAt ?? "",
+    });
+  }
   return { ok: true, enrollmentId: enrollment.id, studentUserId: enrollment.studentUserId, status };
 }

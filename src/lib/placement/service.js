@@ -4,6 +4,7 @@
 // business failures.
 
 import { getPlacementContext } from "@/lib/placement/context";
+import { notifyApplicationStatus, notifyPlacementConfirmed } from "@/lib/notifications/events";
 import {
   getJobById,
   createJobRow,
@@ -24,6 +25,7 @@ import {
   APPLICATION_STATUSES,
   STAFF_TRANSITIONS,
   ADMIN_JOBS_PAGE_SIZE,
+  APPLICATION_STATUS_LABELS,
   MAX,
 } from "@/constants/placement";
 
@@ -138,7 +140,8 @@ export async function updateApplicationStatus({ applicationId, status, notes }) 
   if (!APPLICATION_STATUSES.includes(status) || status === "WITHDRAWN") return fail("status_invalid");
   const note = notes === undefined || notes === null ? null : clean(notes, MAX.notes);
   if (note === null && typeof notes === "string" && notes.trim().length > MAX.notes) return fail("notes_long");
-  if (!getApplicationRow(applicationId)) return fail("not_found");
+  const before = getApplicationRow(applicationId);
+  if (!before) return fail("not_found");
 
   const result = setApplicationStatusTx({
     applicationId,
@@ -147,7 +150,17 @@ export async function updateApplicationStatus({ applicationId, status, notes }) 
     actorUserId: ctx.user.id,
     transitions: STAFF_TRANSITIONS,
   });
-  return result.ok ? { ok: true, jobId: result.jobId } : fail(result.reason);
+  if (!result.ok) return fail(result.reason);
+  if (before.status !== status) {
+    await notifyApplicationStatus({
+      userId: before.student_user_id,
+      applicationId,
+      jobTitle: getJobById(result.jobId)?.title ?? "the job",
+      status,
+      statusLabel: APPLICATION_STATUS_LABELS[status] || status,
+    });
+  }
+  return { ok: true, jobId: result.jobId };
 }
 
 // Explicit confirmation that a SELECTED candidate actually took the job.
@@ -157,6 +170,15 @@ export async function confirmPlacement({ applicationId, note }) {
   if (!ctx) return fail("forbidden");
   const text = typeof note === "string" ? note.trim() : "";
   if (text.length > MAX.notes) return fail("notes_long");
+  const app = getApplicationRow(applicationId);
   const result = confirmPlacementTx({ applicationId, note: text, actorUserId: ctx.user.id });
-  return result.ok ? { ok: true, jobId: result.jobId } : fail(result.reason);
+  if (!result.ok) return fail(result.reason);
+  if (app) {
+    await notifyPlacementConfirmed({
+      userId: app.student_user_id,
+      applicationId,
+      jobTitle: getJobById(result.jobId)?.title ?? "the job",
+    });
+  }
+  return { ok: true, jobId: result.jobId };
 }

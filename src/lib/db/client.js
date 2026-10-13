@@ -62,6 +62,14 @@ function migrate(db) {
   const setToken = db.prepare("UPDATE certificates SET verification_token = ? WHERE id = ? AND verification_token IS NULL");
   for (const row of untokened) setToken.run(crypto.randomBytes(18).toString("base64url"), row.id);
 
+  // Phase 10.7: in-app notification deep link + idempotency key.
+  addColumnIfMissing(db, "notifications", "link", "TEXT");
+  addColumnIfMissing(db, "notifications", "event_key", "TEXT");
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_notifications_event_key
+      ON notifications (user_id, event_key) WHERE event_key IS NOT NULL;
+  `);
+
   db.exec(`
     CREATE UNIQUE INDEX IF NOT EXISTS idx_certificates_verification_token
       ON certificates (verification_token) WHERE verification_token IS NOT NULL;

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useTransition } from "react";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
@@ -7,7 +8,17 @@ import { Button } from "@/components/ui/Button";
 import { markNotificationReadAction } from "@/lib/student/notificationActions";
 import { useUnreadCount } from "@/components/student/UnreadCountContext";
 
-const TYPE_VARIANT = { GENERAL: "neutral", COURSE: "primary", BATCH: "primary", ASSIGNMENT: "warning", SYSTEM: "neutral" };
+const TYPE_VARIANT = {
+  GENERAL: "neutral",
+  COURSE: "primary",
+  BATCH: "primary",
+  ASSIGNMENT: "warning",
+  SYSTEM: "neutral",
+  ENROLLMENT: "primary",
+  FEE: "warning",
+  CERTIFICATE: "success",
+  PLACEMENT: "secondary",
+};
 
 function formatCreatedAt(createdAt) {
   const date = new Date(createdAt.replace(" ", "T") + "Z");
@@ -39,6 +50,11 @@ function NotificationItem({ notification, onMarkRead }) {
             </div>
             <p className="mt-1 text-sm text-muted">{notification.message}</p>
             <p className="mt-1 text-xs text-muted">{formatCreatedAt(notification.createdAt)}</p>
+            {notification.link && (
+              <Link href={notification.link} className="mt-1 inline-block text-xs font-medium text-primary hover:text-primary-hover">
+                View →
+              </Link>
+            )}
           </div>
           <span className="text-xs font-medium text-muted" aria-live="polite">
             {isRead ? "Read" : "Unread"}

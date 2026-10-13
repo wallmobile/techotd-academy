@@ -1,7 +1,23 @@
 import crypto from "node:crypto";
 import { db } from "@/lib/db/client";
 
-export const NOTIFICATION_TYPES = ["GENERAL", "COURSE", "BATCH", "ASSIGNMENT", "SYSTEM"];
+// In-app notification persistence. Phase 8.8 introduced the table and the
+// student reads; Phase 10.7 adds a deep `link`, an idempotency `event_key`,
+// bounded listing, and mark-all-read. Every read/write is scoped by user_id
+// in SQL itself — a notification id alone never grants access.
+
+export const NOTIFICATION_TYPES = [
+  "GENERAL",
+  "COURSE",
+  "BATCH",
+  "ASSIGNMENT",
+  "SYSTEM",
+  "ENROLLMENT",
+  "FEE",
+  "CERTIFICATE",
+  "PLACEMENT",
+  "CRM",
+];
 
 function rowToNotification(row) {
   if (!row) return null;
@@ -11,6 +27,7 @@ function rowToNotification(row) {
     title: row.title,
     message: row.message,
     type: row.type,
+    link: row.link ?? null,
     readAt: row.read_at,
     createdAt: row.created_at,
   };
@@ -18,11 +35,16 @@ function rowToNotification(row) {
 
 // `userId` must always come from the authenticated session (see
 // src/lib/student/notifications.js) — never a value a client supplied.
-export function listNotificationsForUser(userId) {
+// Bounded: at most `limit` rows per call.
+export function listNotificationsForUser(userId, { limit = 100, offset = 0 } = {}) {
   return db
-    .prepare("SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC")
-    .all(userId)
+    .prepare("SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?")
+    .all(userId, limit, offset)
     .map(rowToNotification);
+}
+
+export function countNotificationsForUser(userId) {
+  return db.prepare("SELECT COUNT(*) as c FROM notifications WHERE user_id = ?").get(userId).c;
 }
 
 export function countUnreadForUser(userId) {
@@ -31,13 +53,9 @@ export function countUnreadForUser(userId) {
     .get(userId).c;
 }
 
-// Ownership is enforced by the WHERE clause itself, not by a separate
-// check the caller has to remember: marking a notification id that
-// belongs to a different user matches zero rows and silently does
-// nothing, rather than trusting the id alone. Idempotent — a second call
-// on an already-read notification leaves read_at as its first value
-// (COALESCE), so repeated clicks can't be used to infer anything about
-// timing.
+// Ownership is enforced by the WHERE clause itself: marking a notification
+// id that belongs to a different user matches zero rows and does nothing.
+// Idempotent — a second call keeps the first read_at (COALESCE).
 export function markNotificationRead(userId, notificationId) {
   db.prepare(
     `UPDATE notifications
@@ -50,15 +68,28 @@ export function markNotificationRead(userId, notificationId) {
   );
 }
 
-// Foundation for a future authoring/automation phase — not wired to any
-// UI yet in Phase 8.8 (explicitly out of scope: "Do not build
-// notification automation").
-export function createNotification({ userId, title, message, type = "GENERAL" }) {
-  const id = crypto.randomUUID();
-  db.prepare(
-    `INSERT INTO notifications (id, user_id, title, message, type)
-     VALUES (?, ?, ?, ?, ?)`
-  ).run(id, userId, title, message, type);
+export function markAllNotificationsRead(userId) {
+  return db
+    .prepare("UPDATE notifications SET read_at = datetime('now') WHERE user_id = ? AND read_at IS NULL")
+    .run(userId).changes;
+}
 
-  return rowToNotification(db.prepare("SELECT * FROM notifications WHERE id = ?").get(id));
+// Creates a notification. With an `eventKey`, creation is idempotent per
+// (user, eventKey): a retried business event returns the existing row with
+// `created: false` instead of a duplicate. Returns { notification, created }.
+export function createNotification({ userId, title, message, type = "GENERAL", link = null, eventKey = null }) {
+  const id = crypto.randomUUID();
+  const result = db
+    .prepare(
+      `INSERT INTO notifications (id, user_id, title, message, type, link, event_key)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (user_id, event_key) WHERE event_key IS NOT NULL DO NOTHING`
+    )
+    .run(id, userId, title, message, type, link, eventKey);
+
+  if (result.changes === 1) {
+    return { notification: rowToNotification(db.prepare("SELECT * FROM notifications WHERE id = ?").get(id)), created: true };
+  }
+  const existing = db.prepare("SELECT * FROM notifications WHERE user_id = ? AND event_key = ?").get(userId, eventKey);
+  return { notification: rowToNotification(existing), created: false };
 }

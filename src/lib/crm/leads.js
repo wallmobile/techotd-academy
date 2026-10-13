@@ -9,6 +9,7 @@ import { hashPassword } from "@/lib/auth/password";
 import { findUserByEmailInternal } from "@/lib/db/users";
 import { getEnrollmentsForConvertedStudent } from "@/lib/crm/convertedStudent";
 import { PASSWORD_MIN_LENGTH } from "@/lib/validateAuth";
+import { notifyLeadAssigned } from "@/lib/notifications/events";
 import {
   listLeads,
   getLeadById,
@@ -155,6 +156,7 @@ export async function assignLead(leadId, targetUserId) {
     assignLeadRow(lead.id, ctx.user.id);
     return { ok: true, leadId: lead.id };
   }
+  // (a counsellor claiming for themselves needs no notification)
 
   if (!targetUserId) {
     assignLeadRow(lead.id, null);
@@ -165,6 +167,10 @@ export async function assignLead(leadId, targetUserId) {
     return { ok: false, reason: "Please choose a valid person to assign this lead to." };
   }
   assignLeadRow(lead.id, target.id);
+  // Tell the new assignee — only on a real change, and not when assigning to yourself.
+  if (lead.assignedTo !== target.id && target.id !== ctx.user.id) {
+    await notifyLeadAssigned({ userId: target.id, leadId: lead.id, stamp: getLeadById(lead.id)?.updatedAt ?? "" });
+  }
   return { ok: true, leadId: lead.id };
 }
 

@@ -606,6 +606,50 @@ Findings from the pre-Phase-10.7 audit and what was done about them:
   flows are verified through automated tests and HTTP-level checks of
   production builds.
 
+## Phase 10.7 — Notifications
+
+One reusable notification service on top of the existing `notifications`
+table (extended additively: `link`, `event_key`).
+
+- **In-app:** every user has a feed — students at `/student/notifications`
+  (existing), staff at `/admin/notifications`, trainers at
+  `/trainer/notifications` — with an unread bell in each header. Viewing the
+  feed never marks anything read; only "Mark as read" / "Mark all as read"
+  do, and both are scoped to the signed-in user in SQL. Feeds are paginated.
+- **Events** (created only *after* the underlying operation committed, never
+  for a rejected or rolled-back one, and only on a real change): student
+  enrolled / status changed; fee assigned; payment recorded / voided;
+  certificate issued / revoked; application status changed; placement
+  confirmed; lead assigned to a staff member. Wording is generic — no
+  amounts, receipt numbers, emails, reasons or lead data. Each event has a
+  stable key, and `UNIQUE(user_id, event_key)` makes a retry create at most
+  one notification.
+- **Email** (`src/lib/notifications/email.js`): Resend adapter over HTTPS using
+  `EMAIL_PROVIDER=resend`, `RESEND_API_KEY`, `EMAIL_FROM` (server env only).
+  Without them nothing is sent; each delivery is recorded as `SKIPPED`
+  (`provider_not_configured`) and in-app notifications are unaffected. States:
+  `QUEUED → SENDING → SENT | FAILED`, or `SKIPPED`. **`SENT` means the
+  provider accepted the message — inbox delivery is not confirmed** (no
+  delivery webhook is wired). Transient failures (network, timeout, 429, 5xx)
+  retry with backoff (1 / 5 / 15 min) up to 3 attempts, then `FAILED`;
+  permanent 4xx failures fail immediately; stored errors are short codes only.
+  Emails go only to ACTIVE users with a valid address; there are no
+  marketing emails and no per-user unsubscribe preference yet. The adapter
+  has been exercised only against a mocked `fetch`, **not** against the real
+  provider (no credentials exist here).
+- **Sending:** a small bounded flush runs right after a notification is
+  created; leftovers and retries are processed by `POST
+  /api/notifications/process` (header `x-cron-secret` = `CRON_SECRET`;
+  404 when the secret is unset or wrong) from an external scheduler, or by an
+  admin at `/admin/notifications/deliveries` ("Process queue now" / "Retry
+  failed"). There is no in-process scheduler.
+- **WhatsApp** (`src/lib/notifications/whatsapp.js`): a boundary only. No
+  provider, credentials or approved templates exist and the database has no
+  opt-in field, so **nothing is ever sent** and no message is ever reported as
+  sent or delivered.
+- **Admin visibility:** `/admin/notifications/deliveries` (ADMIN and
+  SUPER_ADMIN) shows provider status, counts and recent deliveries.
+
 ## Phase Status
 
 - **Phase 9.1** Trainer foundation — done.
@@ -624,6 +668,7 @@ Findings from the pre-Phase-10.7 audit and what was done about them:
 - **Phase 10.4 — Fees and Payments: COMPLETE** (manual payments; no payment gateway is integrated — see above).
 - **Phase 10.5 — Certificates: COMPLETE** (PDF download + public verification; no QR/signatures).
 - **Phase 10.6 — Placement and Jobs: COMPLETE** (job board, applications, staff review, confirmed placements; no resume upload).
+- **Phase 10.7 — Notifications: COMPLETE** (in-app live; email adapter tested against mocks only; WhatsApp is an unconfigured boundary).
 
 ## Known Limitations
 

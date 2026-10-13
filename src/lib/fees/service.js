@@ -33,6 +33,7 @@ import {
 } from "@/constants/fees";
 import { getBatchById } from "@/data/batches";
 import { getCourseBySlug } from "@/data/courses";
+import { notifyFeeAssigned, notifyPaymentRecorded, notifyPaymentVoided } from "@/lib/notifications/events";
 
 const MESSAGES = {
   forbidden: "You don't have permission to do that.",
@@ -192,6 +193,11 @@ export async function assignFee({ enrollmentId, currency, total, discount, dueDa
     actorUserId: ctx.user.id,
   });
   if (!result.ok) return fail(result.reason, { feePlanId: result.feePlanId });
+  await notifyFeeAssigned({
+    userId: enrollment.studentUserId,
+    feePlanId: result.feePlanId,
+    courseTitle: getCourseBySlug(batch.courseSlug)?.title ?? batch.courseSlug,
+  });
   return { ok: true, feePlanId: result.feePlanId, studentUserId: enrollment.studentUserId };
 }
 
@@ -256,6 +262,7 @@ export async function recordManualPayment({ feePlanId, amount, method, paidOn, n
     actorUserId: ctx.user.id,
   });
   if (!result.ok) return fail(result.reason, { paymentId: result.paymentId });
+  await notifyPaymentRecorded({ userId: plan.studentUserId, paymentId: result.paymentId });
   return { ok: true, feePlanId: plan.id, paymentId: result.paymentId, receiptNumber: result.receiptNumber };
 }
 
@@ -266,7 +273,10 @@ export async function voidPayment({ paymentId, reason }) {
   if (!text) return fail("reason_required");
   if (text.length > NOTE_MAX_LENGTH) return fail("note_long");
   const result = voidPaymentTx({ paymentId, reason: text, actorUserId: ctx.user.id });
-  return result.ok ? { ok: true, feePlanId: result.feePlanId } : fail(result.reason);
+  if (!result.ok) return fail(result.reason);
+  const plan = getFeePlanById(result.feePlanId);
+  if (plan) await notifyPaymentVoided({ userId: plan.studentUserId, paymentId });
+  return { ok: true, feePlanId: result.feePlanId };
 }
 
 export function newIdempotencyKey() {
