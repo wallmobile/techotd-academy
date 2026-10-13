@@ -11,6 +11,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ROLE_LABELS } from "@/constants/roles";
 import { CRM_ROLES } from "@/constants/crm";
 import { FINANCE_ROLES } from "@/constants/fees";
+import { PLACEMENT_ROLES } from "@/constants/placement";
 import { Button } from "@/components/ui/Button";
 import { formatDbDate } from "@/lib/utils";
 
@@ -44,6 +45,14 @@ export default async function AdminDashboardPage() {
               <p className="mt-1 text-sm text-muted">Assign fees to enrollments and record payments.</p>
               <div className="mt-4">
                 <Button href="/admin/fees">Open Fees</Button>
+              </div>
+            </Card>
+          ) : PLACEMENT_ROLES.includes(user.role) ? (
+            <Card className="max-w-md">
+              <h2 className="text-sm font-semibold text-dark">Jobs &amp; Placement</h2>
+              <p className="mt-1 text-sm text-muted">Post openings and review student applications.</p>
+              <div className="mt-4">
+                <Button href="/admin/jobs">Open Jobs</Button>
               </div>
             </Card>
           ) : (

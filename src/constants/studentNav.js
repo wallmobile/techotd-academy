@@ -16,6 +16,7 @@ export const studentNavItems = [
   { key: "assignments", label: "Assignments", href: "/student/assignments", icon: "assignments", comingSoon: false },
   { key: "attendance", label: "Attendance", href: "/student/attendance", icon: "attendance", comingSoon: false },
   { key: "fees", label: "Fees", href: "/student/fees", icon: "payments", comingSoon: false },
+  { key: "jobs", label: "Jobs", href: "/student/jobs", icon: "placement", comingSoon: false },
   { key: "projects", label: "Projects", href: "/student/projects", icon: "projects", comingSoon: true },
   { key: "certificates", label: "Certificates", href: "/student/certificates", icon: "certificates", comingSoon: false },
   { key: "notifications", label: "Notifications", href: "/student/notifications", icon: "notifications", comingSoon: false },

@@ -527,6 +527,55 @@ issue, revoke and download; students see and download only their own.
 signatures/seals, templates per course, and per-course attendance/assignment
 completion rules.
 
+## Phase 10.6 — Placement and Jobs
+
+A basic, honest job board and application pipeline. **No jobs, companies or
+placement figures are seeded or invented** — the board is empty until staff
+post a real opening.
+
+- **Jobs** (`jobs`): title, company, description, location, employment type,
+  work mode, experience, skills, optional deadline. A new job is always a
+  `DRAFT`; staff publish, unpublish or close it explicitly. Students see only
+  **PUBLISHED jobs whose deadline has not passed**; drafts, closed and
+  expired jobs are hidden and reject applications.
+- **Applications** (`job_applications`): one per student per job
+  (UNIQUE). The applicant is always the signed-in student; the browser sends
+  only the job id and an optional message. A student may apply if they have an
+  **ACTIVE student account with an ACTIVE or COMPLETED enrollment**. There is
+  **no resume/file upload** — staff see the student's name, email, phone,
+  city and bio plus the message. A withdrawn application can't be
+  re-submitted.
+- **Pipeline:** `APPLIED → UNDER_REVIEW → SHORTLISTED → INTERVIEW → SELECTED`
+  (or `REJECTED`; `REJECTED` and `WITHDRAWN` are final). Only staff advance it,
+  the allowed transitions are enforced on the server, and a student can only
+  *withdraw their own* application. Internal staff notes are never selected
+  by any student-facing query.
+- **Verified placements are separate from "Selected".** A placement manager
+  must explicitly confirm that a SELECTED candidate actually joined
+  (`placement_confirmed_at/by`, with an optional note). Only confirmed
+  placements are counted; moving a candidate out of SELECTED clears the
+  confirmation. No percentages, packages, employer logos or partner counts are
+  shown.
+- **Metrics** on `/admin/jobs` are real counts: published jobs, open jobs,
+  applications, under review, shortlisted, verified placements.
+- **Audit:** job and application changes are written to `audit_log` (job page
+  shows its history).
+
+**Routes** (all `noindex`): `/admin/jobs`, `/admin/jobs/new`,
+`/admin/jobs/[job-id]` (edit, publish, review applications, confirm
+placements); students: `/student/jobs` (search, type / mode filters,
+10 per page), `/student/jobs/[job-id]`, `/student/jobs/applications`.
+
+**Access:** SUPER_ADMIN, ADMIN and PLACEMENT_MANAGER manage jobs and
+applicants. Trainers, counsellors, accountants and content managers have no
+access to applicant data. Students see only open jobs and their own
+applications.
+
+**Not implemented:** resume upload, employer accounts or logins, interview
+scheduling, e-mail/WhatsApp notifications, saved jobs, per-course
+eligibility rules, and a placement-statistics dashboard beyond the counts
+above.
+
 ## Phase Status
 
 - **Phase 9.1** Trainer foundation — done.
@@ -544,6 +593,7 @@ completion rules.
 - **Phase 10.3 — Student Enrollment + Batch Operations: COMPLETE** (see above; batch capacity deferred — the catalog has none).
 - **Phase 10.4 — Fees and Payments: COMPLETE** (manual payments; no payment gateway is integrated — see above).
 - **Phase 10.5 — Certificates: COMPLETE** (PDF download + public verification; no QR/signatures).
+- **Phase 10.6 — Placement and Jobs: COMPLETE** (job board, applications, staff review, confirmed placements; no resume upload).
 
 ## Known Limitations
 

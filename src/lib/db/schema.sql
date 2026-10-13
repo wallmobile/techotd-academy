@@ -567,3 +567,58 @@ CREATE INDEX IF NOT EXISTS idx_audit_log_entity ON audit_log (entity_type, entit
 -- approval_note, revoked_at, revoked_reason, revoked_by, plus a partial
 -- UNIQUE index allowing at most one ACTIVE certificate per
 -- (student_id, course_slug). Nothing is dropped; REVOKED rows are kept.
+
+-- --------------------------------------------------------------------------
+-- Placement: jobs and applications (Phase 10.6)
+--
+-- jobs: staff-authored openings. Only PUBLISHED jobs whose deadline has not
+-- passed are visible to students; DRAFT and CLOSED never are. Nothing here is
+-- seeded — no sample companies exist.
+--
+-- job_applications: one per (job, student) (UNIQUE) — a withdrawn
+-- application can't be re-submitted; staff can reopen by other means later.
+-- `status` is the pipeline state and only staff can advance it (students may
+-- only withdraw their own). `staff_notes` is internal and never read by any
+-- student-facing query. A placement is only *verified* when a placement
+-- manager explicitly confirms it (placement_confirmed_at), and only for a
+-- SELECTED application — SELECTED alone is not a placement claim. There is
+-- no resume/file storage: an application is the student's profile plus an
+-- optional cover message.
+-- --------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS jobs (
+  id               TEXT PRIMARY KEY,
+  title            TEXT NOT NULL,
+  company_name     TEXT NOT NULL,
+  description      TEXT NOT NULL,
+  location         TEXT,
+  employment_type  TEXT NOT NULL,
+  work_mode        TEXT NOT NULL,
+  experience       TEXT,
+  skills           TEXT,
+  apply_deadline   TEXT,
+  status           TEXT NOT NULL DEFAULT 'DRAFT',
+  created_by       TEXT REFERENCES users (id) ON DELETE SET NULL,
+  published_at     TEXT,
+  created_at       TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at       TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs (status);
+
+CREATE TABLE IF NOT EXISTS job_applications (
+  id                       TEXT PRIMARY KEY,
+  job_id                   TEXT NOT NULL REFERENCES jobs (id) ON DELETE RESTRICT,
+  student_user_id          TEXT NOT NULL REFERENCES users (id) ON DELETE RESTRICT,
+  cover_message            TEXT,
+  status                   TEXT NOT NULL DEFAULT 'APPLIED',
+  staff_notes              TEXT,
+  placement_confirmed_at   TEXT,
+  placement_confirmed_by   TEXT REFERENCES users (id) ON DELETE SET NULL,
+  placement_note           TEXT,
+  applied_at               TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at               TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (job_id, student_user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_job_applications_student ON job_applications (student_user_id);
+CREATE INDEX IF NOT EXISTS idx_job_applications_status ON job_applications (status);
