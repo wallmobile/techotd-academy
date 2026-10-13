@@ -1,5 +1,7 @@
 import { notFound } from "next/navigation";
+import Link from "next/link";
 import { getJobForStudent } from "@/lib/student/jobs";
+import { getJobFit } from "@/lib/ai/jobFit";
 import { getCurrentUser } from "@/lib/auth/currentUser";
 import { StudentShell } from "@/components/student/StudentShell";
 import { ApplyForm, WithdrawForm } from "@/components/student/JobForms";
@@ -18,6 +20,8 @@ export default async function StudentJobDetailPage({ params }) {
   // Null for unknown ids, drafts and closed jobs the student never applied to.
   const [detail, user] = await Promise.all([getJobForStudent(jobId), getCurrentUser()]);
   if (!detail) notFound();
+  // Deterministic skill comparison (no AI); guidance only, never affects the application.
+  const fit = await getJobFit(jobId);
   const { job, open, application, canApply, canWithdraw, eligible } = detail;
 
   return (
@@ -44,6 +48,54 @@ export default async function StudentJobDetailPage({ params }) {
           {job.skills && <p className="mt-3 text-sm text-text">Skills: {job.skills}</p>}
           <p className="mt-4 whitespace-pre-wrap break-words text-sm text-text">{job.description}</p>
         </Card>
+
+        {fit && (
+          <Card>
+            <h3 className="text-sm font-semibold text-dark">How your skills match</h3>
+            {!fit.hasSkills ? (
+              <p className="mt-3 text-sm text-muted">This job doesn&apos;t list specific skills, so there is nothing to compare.</p>
+            ) : (
+              <div className="mt-3 flex flex-col gap-3 text-sm">
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted">Skills you&apos;re learning that the job lists</p>
+                  {fit.matching.length === 0 ? (
+                    <p className="mt-1 text-muted">None of the listed skills appear in your enrolled courses.</p>
+                  ) : (
+                    <ul className="mt-1 list-disc pl-5 text-text">
+                      {fit.matching.map((m) => (
+                        <li key={m.skill}>
+                          {m.skill} <span className="text-xs text-muted">— {m.from}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+                {fit.missing.length > 0 && (
+                  <div>
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted">Listed skills not covered by your courses</p>
+                    <p className="mt-1 text-text">{fit.missing.join(", ")}</p>
+                  </div>
+                )}
+                {fit.suggestedCourses.length > 0 && (
+                  <div>
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted">Academy courses that cover some of these</p>
+                    <ul className="mt-1 list-disc pl-5 text-text">
+                      {fit.suggestedCourses.map((c) => (
+                        <li key={c.slug}>
+                          <Link href={`/courses/${c.slug}`} className="text-primary hover:text-primary-hover">
+                            {c.title}
+                          </Link>{" "}
+                          <span className="text-xs text-muted">— {c.covers.join(", ")}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+            <p className="mt-3 text-xs text-muted">{fit.caveat}</p>
+          </Card>
+        )}
 
         <Card>
           <h3 className="text-sm font-semibold text-dark">Your application</h3>

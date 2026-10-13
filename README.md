@@ -709,6 +709,69 @@ with a UTF-8 BOM.
 revenue forecasting, cohort / funnel analysis, scheduled reports, and
 per-trainer or per-course drill-downs.
 
+## Phase 10.9 — AI Features
+
+Optional, server-side, and safe to leave unconfigured. Without configuration
+the AI assistant shows a clear "not available" state and never fabricates an
+answer; everything else in the app is unaffected.
+
+**Configuration** (server environment only; keys and model names never reach
+the browser): `AI_PROVIDER=anthropic`, `ANTHROPIC_API_KEY`, `AI_MODEL`
+(required — there is deliberately no default model), optional
+`AI_MAX_OUTPUT_TOKENS` (default 600, max 1000) and `AI_TIMEOUT_MS` (default
+20000, max 30000). The Anthropic Messages API adapter
+(`src/lib/ai/provider.js`) has been tested **only against a mocked `fetch`** —
+it has not been verified against the real service because no credentials exist
+in this project. There are no tools / function calling, no streaming and no
+automatic retries.
+
+**What is implemented** (`/student/assistant`, students only):
+
+- **Learning assistant.** One question per request (2–1000 characters), plus
+  optionally the *outline* (module and lesson titles) of one course the
+  student is enrolled in. The model receives only: a fixed system prompt, that
+  outline, and the question inside delimiters as untrusted input. It receives
+  no name, email, grades, fees, enrollments, other students' data, CRM,
+  placement or staff data. The catalog has outlines, not lesson bodies, and the
+  assistant is told so; it is also told it does not know Academy policies.
+  Answers are shown as plain text with an "AI-generated, may be wrong"
+  notice.
+- **Course recommendations.** Always available from the real catalog
+  (deterministic keyword / technology matching, with the matched terms as the
+  reason, never suggesting a course the student is already enrolled in) and
+  labelled **Catalog match**. When AI is configured the model may only *choose
+  among and explain* the top catalog candidates; its JSON is validated (slugs
+  must be among the candidates, reasons bounded plain text) and anything
+  invalid falls back to the catalog result. Suggestions never promise jobs.
+- **Job fit.** On a job page, a deterministic comparison of the job's listed
+  skills with technologies in the student's active/completed courses (matching
+  skills, missing skills, Academy courses that cover them). No AI is involved,
+  it is guidance only, it never affects an application, and it states that it
+  is not an assessment.
+
+**Safety model**
+
+- The student identity always comes from the session; nothing user-supplied
+  selects whose data is used. A course outline is only sent for a course the
+  student is enrolled in.
+- AI output is plain text only — control characters stripped, length bounded,
+  rendered escaped (never as HTML or markdown) — and is never passed to any
+  function that changes records. The model has no tools and no database or
+  filesystem access, so a successful prompt injection has nothing to read or
+  change.
+- **Limits:** 20 requests per 10 minutes and 50 provider calls per UTC day per
+  user (shared across processes through the database), one in-flight request
+  per user *per server process*, input/output length caps, and a request
+  timeout. There is no cross-host concurrency limit.
+- **Privacy:** prompts and answers are **not stored** — there is no
+  conversation history to retrieve or delete. Only minimal usage metadata
+  (user, feature, outcome, sizes, token counts) is kept in `ai_usage` for the
+  daily cap; it is removed with the user. Logs contain only short error codes.
+
+**Not implemented:** conversation history, lesson-content retrieval (no lesson
+bodies exist), AI-generated practice-quiz grading, AI job-application
+feedback, trainer/admin AI tools, and streaming responses.
+
 ## Phase Status
 
 - **Phase 9.1** Trainer foundation — done.
@@ -729,6 +792,7 @@ per-trainer or per-course drill-downs.
 - **Phase 10.6 — Placement and Jobs: COMPLETE** (job board, applications, staff review, confirmed placements; no resume upload).
 - **Phase 10.7 — Notifications: COMPLETE** (in-app live; email adapter tested against mocks only; WhatsApp is an unconfigured boundary).
 - **Phase 10.8 — Analytics and Reports: COMPLETE** (real-data reports, role-scoped sections, safe CSV export).
+- **Phase 10.9 — AI Features: COMPLETE** (learning assistant, recommendations, deterministic job fit; AI provider tested against mocks only and unconfigured here).
 
 ## Known Limitations
 

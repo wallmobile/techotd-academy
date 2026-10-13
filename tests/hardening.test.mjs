@@ -147,3 +147,30 @@ test("robots.txt keeps private areas away from crawlers and security headers are
   }
   assert.equal(headers.find((h) => h.key === "X-Frame-Options").value, "DENY");
 });
+
+// Next.js refuses to load a "use server" module that exports anything other
+// than async functions (it 500s at runtime, which node-level tests can't
+// see), so enforce that statically for every Server Action file.
+test('every "use server" module exports only async functions', async () => {
+  const fs = await import("node:fs");
+  const path = await import("node:path");
+  const offenders = [];
+  const walk = (dir) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (/\.(js|jsx)$/.test(entry.name)) {
+        const text = fs.readFileSync(full, "utf8").replace(/\r\n/g, "\n");
+        const head = text.split("\n").slice(0, 3).join("\n");
+        if (!/^\s*(["'])use server\1/m.test(head)) continue;
+        for (const line of text.split("\n")) {
+          if (/^export\s+(const|let|var|class)\s/.test(line) || /^export\s+function\s/.test(line) || /^export\s*\{/.test(line)) {
+            offenders.push(`${full}: ${line.trim()}`);
+          }
+        }
+      }
+    }
+  };
+  walk(path.join(process.cwd(), "src"));
+  assert.deepEqual(offenders, []);
+});

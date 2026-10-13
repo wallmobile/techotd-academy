@@ -679,3 +679,25 @@ CREATE INDEX IF NOT EXISTS idx_payments_paid_on ON payments (paid_on);
 CREATE INDEX IF NOT EXISTS idx_fee_plans_created_at ON fee_plans (created_at);
 CREATE INDEX IF NOT EXISTS idx_certificates_issued_at ON certificates (issued_at);
 CREATE INDEX IF NOT EXISTS idx_job_applications_applied_at ON job_applications (applied_at);
+
+-- --------------------------------------------------------------------------
+-- AI usage metadata (Phase 10.9)
+--
+-- One row per AI feature call: who, which feature, the outcome and sizes.
+-- Prompts and answers are deliberately NOT stored (privacy), so there is no
+-- conversation history to retrieve or delete. Rows exist for the per-user
+-- daily cap and operational visibility, and cascade away with the user.
+-- --------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS ai_usage (
+  id             TEXT PRIMARY KEY,
+  user_id        TEXT NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  feature        TEXT NOT NULL,
+  outcome        TEXT NOT NULL,
+  input_chars    INTEGER NOT NULL DEFAULT 0,
+  output_chars   INTEGER NOT NULL DEFAULT 0,
+  input_tokens   INTEGER,
+  output_tokens  INTEGER,
+  created_at     TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_usage_user_day ON ai_usage (user_id, created_at);
