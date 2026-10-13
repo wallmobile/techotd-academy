@@ -426,6 +426,62 @@ enrollment or CSV import, student self-enrollment, enrollment audit trail,
 email / SMS notifications of credentials or enrollment, and lead-to-student
 conversion by counsellors.
 
+## Phase 10.4 — Fees and Payments
+
+Fee management for real enrollments, with manually recorded payments and an
+integration boundary for a future payment gateway.
+
+- **No prices are invented.** Course prices don't exist in this app; a fee is
+  an amount an authorized staff member explicitly assigns to **one**
+  enrollment (`fee_plans`, unique per `batch_enrollments` row; edit it rather
+  than stacking plans). Net payable = total − discount.
+- **Money is integer minor units** (paise) with an explicit currency
+  (`INR` is the only configured one — `src/constants/fees.js`). Decimal input
+  is parsed from the string; floats are never used for totals.
+- **Status is derived, never stored:** `PENDING`, `PARTIALLY_PAID`, `PAID`,
+  `OVERDUE` (past due date with a balance) or `CANCELLED`. A plan is "paid"
+  only because counted payments cover it.
+- **Payments** (`payments`) are append-only. Manual payments are stored as
+  `source = MANUAL`, `status = RECORDED`, attributed to the staff member, and
+  can never claim to be gateway-verified. Overpayment is refused. A mistaken
+  entry is **voided** (reason + actor kept) — never deleted; its receipt stops
+  opening. A plan with counted payments can't be cancelled; a fee can't be
+  edited below what has been paid.
+- **Receipts:** one per recorded payment (`RCPT-YYYY-NNNNNN`), opened through an
+  unguessable token. They acknowledge a payment — they are **not** tax
+  invoices (no tax/GST data exists).
+- **Audit:** `audit_log` records who/what/when for fee and payment changes
+  (non-secret fields only); the fee page shows the change history.
+- **Atomic and idempotent:** each financial write is one IMMEDIATE
+  transaction (rolled back entirely on failure). A double-submitted payment
+  form records once (per-render idempotency key), and a provider
+  transaction can only be recorded once.
+
+**Routes** (`noindex`): `/admin/fees` (search, status / course filters, sort,
+20 per page, real totals), `/admin/fees/new` (pick an enrollment, enter the
+fee), `/admin/fees/[fee-id]` (details, record / void payments, edit, cancel,
+history), `/admin/fees/[fee-id]/receipt/[payment-id]`; students:
+`/student/fees` and `/student/fees/receipt/[token]` (own data only,
+read-only). Enrollment pages link to "Assign fee".
+
+**Access:** SUPER_ADMIN, ADMIN and ACCOUNTANT manage fees and payments.
+Counsellors, trainers, content / placement managers have no finance access.
+Students see only their own fees and receipts, derived from their session.
+
+**Payment gateway: NOT integrated.** No provider, credentials, checkout or
+webhook route exist, and the app never reports an online payment as
+successful. `src/lib/fees/gateway.js` is the documented boundary:
+`verifyWebhookSignature()` (HMAC-SHA256, constant time) and the idempotent
+`confirmGatewayPayment()` (validates amount/currency/overpayment, safe against
+replays and out-of-order delivery) are implemented and tested with **fake
+fixtures only**. To go live: set `PAYMENT_PROVIDER` and `PAYMENT_WEBHOOK_SECRET`
+(server-side env only), add a webhook route handler that verifies the
+signature on the raw body and then calls `confirmGatewayPayment()`, and
+add a provider checkout. None of that has been tested against a real provider.
+
+**Not implemented:** refunds, instalment schedules, tax invoices / GST,
+reminders or notifications, reconciliation reports, multi-currency.
+
 ## Phase Status
 
 - **Phase 9.1** Trainer foundation — done.
@@ -441,7 +497,7 @@ conversion by counsellors.
 - **Phase 10.1 — Admin Foundation: COMPLETE.** Real admin shell and dashboard, user/student/trainer management, trainer creation, trainer-batch assignment, read-only roles page, account activate/deactivate. See "Admin Area" below.
 - **Phase 10.2 — CRM / Leads + Enquiry Persistence: COMPLETE** (see above). Public forms persist leads; `/admin/leads` with status, assignment, notes and counsellor-scoped access.
 - **Phase 10.3 — Student Enrollment + Batch Operations: COMPLETE** (see above; batch capacity deferred — the catalog has none).
-- **Phase 10.4** — next, not started.
+- **Phase 10.4 — Fees and Payments: COMPLETE** (manual payments; no payment gateway is integrated — see above).
 
 ## Known Limitations
 

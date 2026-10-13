@@ -1,7 +1,7 @@
 /**
  * Admin sidebar navigation (Phase 10.1). Only routes that really exist are
  * links. Everything planned for later phases (Courses, Batches,
- * Payments, Certificates, Reports, Placement, Content, Settings) is
+ * Certificates, Reports, Placement, Content, Settings) is
  * `comingSoon: true` — rendered as a non-link "Soon" item by AdminNavList,
  * with no route behind it — same mechanism as trainerNav/studentNav.
  *
@@ -11,6 +11,7 @@
  */
 import { ADMIN_MANAGEMENT_ROLES } from "@/constants/roles";
 import { CRM_ROLES } from "@/constants/crm";
+import { FINANCE_ROLES } from "@/constants/fees";
 
 const MANAGERS = ADMIN_MANAGEMENT_ROLES;
 export const adminNavItems = [
@@ -23,7 +24,7 @@ export const adminNavItems = [
   { key: "roles", label: "Roles & Access", href: "/admin/roles", icon: "roles", comingSoon: false, roles: MANAGERS },
   { key: "courses", label: "Courses", href: "/admin/courses", icon: "courses", comingSoon: true, roles: MANAGERS },
   { key: "batches", label: "Batches", href: "/admin/batches", icon: "batches", comingSoon: true, roles: MANAGERS },
-  { key: "payments", label: "Payments", href: "/admin/payments", icon: "payments", comingSoon: true, roles: MANAGERS },
+  { key: "fees", label: "Fees", href: "/admin/fees", icon: "payments", comingSoon: false, roles: FINANCE_ROLES },
   { key: "certificates", label: "Certificates", href: "/admin/certificates", icon: "certificates", comingSoon: true, roles: MANAGERS },
   { key: "reports", label: "Reports", href: "/admin/reports", icon: "reports", comingSoon: true, roles: MANAGERS },
   { key: "placement", label: "Placement", href: "/admin/placement", icon: "placement", comingSoon: true, roles: MANAGERS },

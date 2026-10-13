@@ -463,3 +463,99 @@ CREATE TABLE IF NOT EXISTS lead_notes (
 );
 
 CREATE INDEX IF NOT EXISTS idx_lead_notes_lead_id ON lead_notes (lead_id);
+
+-- --------------------------------------------------------------------------
+-- Fees, payments and audit trail (Phase 10.4)
+--
+-- Course prices do not exist anywhere in this app, so nothing is inferred:
+-- a fee plan is an amount a staff member explicitly assigns to ONE real
+-- enrollment (batch_enrollments row). All money is stored as INTEGER minor
+-- units (paise/cents) with an explicit currency — never floats.
+--
+-- fee_plans: UNIQUE(enrollment_id) = at most one plan per enrollment (edit
+-- it instead of stacking plans). Net payable = total_minor - discount_minor.
+-- The payment *status* (pending / partially paid / paid / overdue) is
+-- derived from the plan and its payments, never stored, so it can't drift.
+--
+-- payments: append-only history. A mistaken entry is VOIDED (with reason and
+-- actor) rather than deleted. Only RECORDED (manual, staff-entered) and
+-- VERIFIED (gateway-confirmed) rows count toward "paid". `source` makes a
+-- manual entry distinguishable from a gateway-verified one. receipt_token is
+-- the unguessable identifier used in receipt URLs; receipt_number is the
+-- human-readable number. UNIQUE(provider, provider_reference) and
+-- idempotency_key prevent the same provider transaction being recorded twice.
+--
+-- payment_provider_events: dedupe table for future gateway webhooks
+-- (UNIQUE(provider, event_id)). No gateway is configured yet.
+--
+-- audit_log: minimal who/what/when record for financial mutations (detail is
+-- a short JSON string of non-secret fields only).
+-- --------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS fee_plans (
+  id                TEXT PRIMARY KEY,
+  enrollment_id     TEXT NOT NULL UNIQUE REFERENCES batch_enrollments (id) ON DELETE RESTRICT,
+  student_user_id   TEXT NOT NULL REFERENCES users (id) ON DELETE RESTRICT,
+  course_slug       TEXT NOT NULL,
+  batch_id          TEXT NOT NULL,
+  currency          TEXT NOT NULL,
+  total_minor       INTEGER NOT NULL CHECK (total_minor >= 0),
+  discount_minor    INTEGER NOT NULL DEFAULT 0 CHECK (discount_minor >= 0),
+  due_date          TEXT,
+  status            TEXT NOT NULL DEFAULT 'ACTIVE',
+  note              TEXT,
+  created_by        TEXT REFERENCES users (id) ON DELETE SET NULL,
+  created_at        TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at        TEXT NOT NULL DEFAULT (datetime('now')),
+  CHECK (discount_minor <= total_minor)
+);
+
+CREATE INDEX IF NOT EXISTS idx_fee_plans_student_user_id ON fee_plans (student_user_id);
+CREATE INDEX IF NOT EXISTS idx_fee_plans_course_slug ON fee_plans (course_slug);
+
+CREATE TABLE IF NOT EXISTS payments (
+  id                  TEXT PRIMARY KEY,
+  fee_plan_id         TEXT NOT NULL REFERENCES fee_plans (id) ON DELETE RESTRICT,
+  amount_minor        INTEGER NOT NULL CHECK (amount_minor > 0),
+  currency            TEXT NOT NULL,
+  source              TEXT NOT NULL,
+  method              TEXT NOT NULL,
+  provider            TEXT,
+  provider_reference  TEXT,
+  idempotency_key     TEXT UNIQUE,
+  status              TEXT NOT NULL,
+  paid_on             TEXT NOT NULL,
+  note                TEXT,
+  recorded_by         TEXT REFERENCES users (id) ON DELETE SET NULL,
+  verified_at         TEXT,
+  voided_at           TEXT,
+  void_reason         TEXT,
+  voided_by           TEXT REFERENCES users (id) ON DELETE SET NULL,
+  receipt_number      TEXT NOT NULL UNIQUE,
+  receipt_token       TEXT NOT NULL UNIQUE,
+  created_at          TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_payments_fee_plan_id ON payments (fee_plan_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_payments_provider_reference
+  ON payments (provider, provider_reference) WHERE provider IS NOT NULL AND provider_reference IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS payment_provider_events (
+  id           TEXT PRIMARY KEY,
+  provider     TEXT NOT NULL,
+  event_id     TEXT NOT NULL,
+  received_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  outcome      TEXT,
+  UNIQUE (provider, event_id)
+);
+
+CREATE TABLE IF NOT EXISTS audit_log (
+  id             TEXT PRIMARY KEY,
+  actor_user_id  TEXT REFERENCES users (id) ON DELETE SET NULL,
+  action         TEXT NOT NULL,
+  entity_type    TEXT NOT NULL,
+  entity_id      TEXT NOT NULL,
+  detail         TEXT,
+  created_at     TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_log_entity ON audit_log (entity_type, entity_id);

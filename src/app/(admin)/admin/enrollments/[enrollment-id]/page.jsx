@@ -2,6 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireAdminContext } from "@/lib/admin/context";
 import { getEnrollmentDetail } from "@/lib/admin/enrollments";
+import { getFeeForEnrollment } from "@/lib/fees/service";
+import { formatMinor } from "@/lib/money";
 import { AdminShell } from "@/components/admin/AdminShell";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { EnrollmentStatusBadge } from "@/components/admin/AdminDataList";
@@ -19,6 +21,7 @@ export default async function AdminEnrollmentDetailPage({ params }) {
   const { "enrollment-id": enrollmentId } = await params;
   const e = await getEnrollmentDetail(enrollmentId);
   if (!e) notFound();
+  const fee = await getFeeForEnrollment(e.id);
 
   return (
     <AdminShell user={user} title="Enrollments">
@@ -45,6 +48,27 @@ export default async function AdminEnrollmentDetailPage({ params }) {
               <Row label="Enrolled">{formatDbDate(e.enrolledAt)}</Row>
               <Row label="Last updated">{formatDbDate(e.updatedAt)}</Row>
             </dl>
+          </Card>
+
+          <Card>
+            <h2 className="text-sm font-semibold text-dark">Fee</h2>
+            {fee ? (
+              <div className="mt-3 text-sm">
+                <p className="text-text">
+                  {formatMinor(fee.paidMinor, fee.currency)} paid of {formatMinor(fee.netMinor, fee.currency)}
+                </p>
+                <Link href={`/admin/fees/${fee.id}`} className="mt-2 inline-block font-medium text-primary hover:text-primary-hover">
+                  Open fee →
+                </Link>
+              </div>
+            ) : (
+              <div className="mt-3 text-sm">
+                <p className="text-muted">No fee assigned to this enrollment.</p>
+                <Link href={`/admin/fees/new?enrollment=${e.id}`} className="mt-2 inline-block font-medium text-primary hover:text-primary-hover">
+                  Assign fee →
+                </Link>
+              </div>
+            )}
           </Card>
 
           <Card>

@@ -2,6 +2,7 @@ import { Badge } from "@/components/ui/Badge";
 import { ROLE_LABELS } from "@/constants/roles";
 import { LEAD_STATUS_LABELS } from "@/constants/crm";
 import { ENROLLMENT_STATUS_LABELS } from "@/constants/enrollment";
+import { FEE_STATUS_LABELS } from "@/constants/fees";
 
 const STATUS_VARIANT = { ACTIVE: "success", INACTIVE: "neutral", SUSPENDED: "danger" };
 
@@ -88,4 +89,10 @@ const ENROLLMENT_VARIANT = { ACTIVE: "success", COMPLETED: "primary", CANCELLED:
 
 export function EnrollmentStatusBadge({ status }) {
   return <Badge variant={ENROLLMENT_VARIANT[status] || "neutral"}>{ENROLLMENT_STATUS_LABELS[status] || status}</Badge>;
+}
+
+const FEE_VARIANT = { PENDING: "warning", PARTIALLY_PAID: "primary", PAID: "success", OVERDUE: "danger", CANCELLED: "neutral" };
+
+export function FeeStatusBadge({ status }) {
+  return <Badge variant={FEE_VARIANT[status] || "neutral"}>{FEE_STATUS_LABELS[status] || status}</Badge>;
 }
