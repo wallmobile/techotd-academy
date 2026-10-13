@@ -12,6 +12,7 @@ import { getAdminContext } from "@/lib/admin/context";
 import { markNotificationRead, markAllNotificationsRead } from "@/lib/db/notifications";
 import { resetFailedDeliveries } from "@/lib/db/notificationDeliveries";
 import { processDeliveries } from "@/lib/notifications/service";
+import { setEmailNotificationsEnabled } from "@/lib/db/users";
 
 function revalidateFeeds() {
   revalidatePath("/admin/notifications");
@@ -45,4 +46,13 @@ export async function retryFailedAction() {
   resetFailedDeliveries();
   await processDeliveries({ limit: 25 });
   revalidatePath("/admin/notifications/deliveries");
+}
+
+// The signed-in user's own email preference. The target is always the session
+// user; the form only supplies the on/off value.
+export async function setEmailPreferenceAction(formData) {
+  const user = await getCurrentUser();
+  if (!user) return;
+  setEmailNotificationsEnabled(user.id, formData.get("emailNotifications") === "on");
+  revalidateFeeds();
 }

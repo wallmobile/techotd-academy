@@ -98,3 +98,14 @@ export function updateUserName(userId, name) {
   );
   return findUserById(userId);
 }
+
+// Email-notification preference (Phase 10.10). Defaults to ON; turning it off
+// only stops EMAIL deliveries — in-app notifications always continue.
+export function getEmailNotificationsEnabled(userId) {
+  const row = db.prepare("SELECT email_notifications AS e FROM users WHERE id = ?").get(userId);
+  return row ? row.e !== 0 : true;
+}
+
+export function setEmailNotificationsEnabled(userId, enabled) {
+  return db.prepare("UPDATE users SET email_notifications = ? WHERE id = ?").run(enabled ? 1 : 0, userId).changes === 1;
+}

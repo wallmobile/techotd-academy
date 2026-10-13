@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { requireRole } from "@/lib/auth/guards";
 import { getAnalytics, toSeries } from "@/lib/analytics/service";
 import { AdminShell } from "@/components/admin/AdminShell";
@@ -60,12 +59,12 @@ export default async function AdminAnalyticsPage({ searchParams }) {
 
         {canExport && !range.error && (
           <div className="flex flex-wrap gap-4 text-sm">
-            <Link href={`/admin/analytics/export?type=summary&${query}`} className="font-medium text-primary hover:text-primary-hover">
+            <a href={`/admin/analytics/export?type=summary&${query}`} className="font-medium text-primary hover:text-primary-hover">
               Download summary (CSV)
-            </Link>
-            <Link href={`/admin/analytics/export?type=daily&${query}`} className="font-medium text-primary hover:text-primary-hover">
+            </a>
+            <a href={`/admin/analytics/export?type=daily&${query}`} className="font-medium text-primary hover:text-primary-hover">
               Download daily breakdown (CSV)
-            </Link>
+            </a>
           </div>
         )}
 

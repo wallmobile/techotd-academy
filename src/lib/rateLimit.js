@@ -5,18 +5,42 @@
 // memory. It does not span multiple hosts with separate database files; a
 // multi-host deployment needs a shared store (Redis etc.) or edge/WAF rate
 // limiting in front. The client IP comes from X-Forwarded-For / X-Real-IP,
-// which is only trustworthy when a reverse proxy you control sets it.
+// which is only trustworthy behind reverse proxies you control (see
+// trustedProxyHops below).
 
 import crypto from "node:crypto";
 import { headers } from "next/headers";
 import { consumeRateLimit } from "@/lib/db/rateLimits";
 
+// How many reverse proxies you operate in front of the app (each appends the
+// address it saw to X-Forwarded-For). The client address is the entry that
+// many places from the RIGHT: everything to its left was supplied by the
+// client and can be forged to dodge the limiter. 0 = the app is exposed
+// directly (or you don't trust any proxy): forwarding headers are ignored and
+// all callers share one "unknown" bucket (per-account limits still apply).
+export function trustedProxyHops(env = process.env) {
+  const raw = env.TRUSTED_PROXY_HOPS;
+  if (raw === undefined || raw === "") return 1;
+  const n = Number(raw);
+  return Number.isInteger(n) && n >= 0 && n <= 5 ? n : 1;
+}
+
+const IP_PATTERN = /^[0-9a-fA-F:.]{2,45}$/;
+
+export function clientIpFromHeaders(get, hops = trustedProxyHops()) {
+  if (hops === 0) return "unknown";
+  const chain = String(get("x-forwarded-for") || "")
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const candidate = chain.length ? chain[Math.max(0, chain.length - hops)] : String(get("x-real-ip") || "").trim();
+  return IP_PATTERN.test(candidate) ? candidate : "unknown";
+}
+
 export async function getClientIp() {
   try {
     const h = await headers();
-    const forwarded = h.get("x-forwarded-for");
-    const ip = (forwarded ? forwarded.split(",")[0] : h.get("x-real-ip")) || "";
-    return ip.trim().slice(0, 64) || "unknown";
+    return clientIpFromHeaders((name) => h.get(name));
   } catch {
     return "unknown";
   }

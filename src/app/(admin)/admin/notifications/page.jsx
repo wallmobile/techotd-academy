@@ -4,6 +4,8 @@ import { getMyFeed } from "@/lib/notifications/feed";
 import { AdminShell } from "@/components/admin/AdminShell";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { NotificationFeed } from "@/components/shared/NotificationFeed";
+import { EmailPreferenceForm } from "@/components/shared/EmailPreferenceForm";
+import { getEmailNotificationsEnabled } from "@/lib/db/users";
 import { ADMIN_MANAGEMENT_ROLES } from "@/constants/roles";
 
 export const metadata = {
@@ -27,6 +29,7 @@ export default async function AdminNotificationsPage({ searchParams }) {
             </Link>
           )}
         </AdminPageHeader>
+        <EmailPreferenceForm enabled={getEmailNotificationsEnabled(user.id)} />
         <NotificationFeed feed={feed} basePath="/admin/notifications" />
       </div>
     </AdminShell>

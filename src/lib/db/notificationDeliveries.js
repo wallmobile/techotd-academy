@@ -40,7 +40,7 @@ export function enqueueDelivery({ notificationId, channel, status = "QUEUED", la
 export function listDueDeliveries({ limit = 10 } = {}) {
   return db
     .prepare(
-      `SELECT d.*, n.title, n.message, n.link, u.email AS user_email, u.status AS user_status
+      `SELECT d.*, n.title, n.message, n.link, u.email AS user_email, u.status AS user_status, u.email_notifications AS user_email_enabled
        FROM notification_deliveries d
        JOIN notifications n ON n.id = d.notification_id
        JOIN users u ON u.id = n.user_id
@@ -57,6 +57,7 @@ export function listDueDeliveries({ limit = 10 } = {}) {
       link: r.link,
       userEmail: r.user_email,
       userStatus: r.user_status,
+      userEmailEnabled: r.user_email_enabled !== 0,
     }));
 }
 

@@ -51,7 +51,12 @@ test("limiter state is in the shared database (not process memory) and stores no
 });
 
 test("client IP comes from the forwarding headers, with a safe fallback", async () => {
+  // One trusted proxy (the default): the entry it appended is the client.
+  // Anything to its left was supplied by the caller and must not be trusted
+  // (see tests/release.test.mjs for the full spoofing matrix).
   setRequestHeaders({ "x-forwarded-for": "198.51.100.7, 10.0.0.1" });
+  assert.equal(await getClientIp(), "10.0.0.1");
+  setRequestHeaders({ "x-forwarded-for": "198.51.100.7" });
   assert.equal(await getClientIp(), "198.51.100.7");
   setRequestHeaders({ "x-real-ip": "198.51.100.8" });
   assert.equal(await getClientIp(), "198.51.100.8");

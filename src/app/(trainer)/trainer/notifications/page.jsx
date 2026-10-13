@@ -2,6 +2,8 @@ import { requireArea } from "@/lib/auth/guards";
 import { getMyFeed } from "@/lib/notifications/feed";
 import { TrainerShell } from "@/components/trainer/TrainerShell";
 import { NotificationFeed } from "@/components/shared/NotificationFeed";
+import { EmailPreferenceForm } from "@/components/shared/EmailPreferenceForm";
+import { getEmailNotificationsEnabled } from "@/lib/db/users";
 
 export const metadata = {
   title: "Notifications",
@@ -20,6 +22,7 @@ export default async function TrainerNotificationsPage({ searchParams }) {
           <h2 className="text-xl font-semibold tracking-tight text-dark">Notifications</h2>
           <p className="mt-1 text-sm text-muted">Updates that concern you.</p>
         </div>
+        <EmailPreferenceForm enabled={getEmailNotificationsEnabled(user.id)} />
         <NotificationFeed feed={feed} basePath="/trainer/notifications" />
       </div>
     </TrainerShell>

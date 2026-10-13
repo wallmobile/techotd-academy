@@ -41,6 +41,8 @@ function resolveDatabasePath() {
 // table). Existing data is preserved; nothing is dropped or recreated.
 function migrate(db) {
   // Phase 9.4: assignments.created_by (authoring trainer).
+  // Phase 10.10: per-user email opt-out (in-app notifications are unaffected).
+  addColumnIfMissing(db, "users", "email_notifications", "INTEGER NOT NULL DEFAULT 1");
   addColumnIfMissing(db, "assignments", "created_by", "TEXT REFERENCES users (id) ON DELETE SET NULL");
 
   // Phase 10.3: lead -> student conversion reference (leads table is from 10.2).

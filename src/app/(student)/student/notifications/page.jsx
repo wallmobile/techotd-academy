@@ -3,6 +3,8 @@ import { getCurrentUser } from "@/lib/auth/currentUser";
 import { StudentShell } from "@/components/student/StudentShell";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { NotificationsList } from "@/components/student/notifications/NotificationsList";
+import { EmailPreferenceForm } from "@/components/shared/EmailPreferenceForm";
+import { getEmailNotificationsEnabled } from "@/lib/db/users";
 
 export const metadata = {
   title: "Notifications",
@@ -18,6 +20,7 @@ export default async function StudentNotificationsPage() {
     <StudentShell user={user} title="Notifications">
       <div className="flex flex-col gap-6">
         <p className="text-sm text-muted">Updates about your courses, batches and assignments.</p>
+        <EmailPreferenceForm enabled={getEmailNotificationsEnabled(user.id)} />
 
         {notifications.length === 0 ? (
           <EmptyState

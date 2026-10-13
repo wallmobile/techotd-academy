@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { getClientIp, hitLimit } from "@/lib/rateLimit";
+import { canDeliverResetEmail, deliverPasswordResetEmail } from "@/lib/auth/resetEmail";
 import { startSession, endSession } from "@/lib/auth/session";
 import { roleHomeRoute } from "@/lib/auth/roles";
 import {
@@ -138,21 +139,35 @@ export async function forgotPasswordAction(_prevState, formData) {
     return { status: "error", errors, values };
   }
 
+  // In production the link can only reach the user by email. If that isn't
+  // configured, say so (a global fact, it reveals nothing about any account)
+  // instead of promising an email that will never arrive.
+  const production = process.env.NODE_ENV === "production";
+  if (production && !canDeliverResetEmail()) {
+    return {
+      status: "error",
+      errors: { email: "Password reset by email isn't available right now. Please contact TechOTD Academy support." },
+      values,
+    };
+  }
+
   // Throttle reset requests per (ip, email). Over the limit we still return
   // the same public response (no token is created), so this reveals nothing.
   const ip = await getClientIp();
-  const allowed = hitLimit("forgotPassword", ip, values.email.trim().toLowerCase()).allowed;
+  const email = values.email.trim();
+  const allowed = hitLimit("forgotPassword", ip, email.toLowerCase()).allowed;
   const result = allowed ? createPasswordResetTokenForEmail(values.email) : null;
 
-  // No email delivery is configured in this phase (see Phase 7 report), so
-  // there is nothing to "send". In development only, the reset link is
-  // surfaced directly in the response so the flow can be exercised
-  // end-to-end without a mail provider. This must never happen in
-  // production, where the link would only ever go out over email.
-  const devResetPath =
-    result && process.env.NODE_ENV !== "production"
-      ? `/reset-password?token=${result.token}`
-      : undefined;
+  // Production: email the link. Not awaited, so response time doesn't reveal
+  // whether the account exists; a failure is only a short code in the log.
+  // Outside production the link is surfaced in the response instead so the
+  // flow works without a mail provider. That never happens in production.
+  if (result && production) {
+    void deliverPasswordResetEmail({ to: email, token: result.token }).then((r) => {
+      if (!r.ok) console.warn(`[auth] password reset email not sent: ${r.code}`);
+    });
+  }
+  const devResetPath = result && !production ? `/reset-password?token=${result.token}` : undefined;
 
   return {
     status: "success",

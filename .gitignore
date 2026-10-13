@@ -25,3 +25,7 @@ data/*.db-shm
 coverage
 logs
 .claude/settings.local.json
+
+# e2e scratch/artifacts (never committed)
+e2e/.scratch/
+e2e/artifacts/

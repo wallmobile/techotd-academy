@@ -19,7 +19,7 @@ import {
   requeueDelivery,
 } from "@/lib/db/notificationDeliveries";
 import { getEmailConfig, buildEmailContent, sendEmail, isValidRecipient } from "@/lib/notifications/email";
-import { findUserById } from "@/lib/db/users";
+import { findUserById, getEmailNotificationsEnabled } from "@/lib/db/users";
 
 const BACKOFF_SECONDS = [60, 300, 900];
 const MAX_TITLE = 120;
@@ -60,6 +60,9 @@ export function notify({ userId, type, title, message, link = null, eventKey, em
   } else if (!isValidRecipient(user.email)) {
     status = "SKIPPED";
     reason = "invalid_recipient";
+  } else if (!getEmailNotificationsEnabled(userId)) {
+    status = "SKIPPED";
+    reason = "user_opted_out";
   }
   const delivery = enqueueDelivery({ notificationId: notification.id, channel: "EMAIL", status, lastError: reason });
   return { created, notificationId: notification.id, email: delivery.status };
@@ -99,6 +102,12 @@ export async function processDeliveries({ limit = 10, send = sendEmail } = {}) {
 
     if (d.userStatus !== "ACTIVE") {
       markDeliverySkipped(d.id, "inactive_user");
+      summary.skipped += 1;
+      continue;
+    }
+    // Honour an opt-out made after the email was queued.
+    if (!d.userEmailEnabled) {
+      markDeliverySkipped(d.id, "user_opted_out");
       summary.skipped += 1;
       continue;
     }

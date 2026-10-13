@@ -27,6 +27,10 @@ const SUBNAV_ITEMS = [
   { id: "faq", label: "FAQ" },
 ];
 
+// Inside a <script> tag, a literal "<" could close the tag; JSON allows the
+// escaped form, so structured data is emitted with every "<" escaped.
+const JSON_LD_LT = String.fromCharCode(92) + "u003c";
+
 export function generateStaticParams() {
   return courses.map((course) => ({ "course-slug": course.slug }));
 }
@@ -81,7 +85,7 @@ export default async function CourseDetailPage({ params }) {
     <>
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData).replace(/</g, JSON_LD_LT) }}
       />
       <CourseDetailHero course={course} />
       <CourseSubNav items={SUBNAV_ITEMS} ctaHref={`/book-demo?course=${course.slug}&source=course-detail`} />

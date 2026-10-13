@@ -837,3 +837,21 @@ feedback, trainer/admin AI tools, and streaming responses.
 - Windows native compilation of `better-sqlite3` is expected to work (see
   Requirements) but was **NOT VERIFIED** on an actual Windows machine —
   this project was built and tested in a Linux sandbox.
+
+## Deployment Prerequisites & Verification (Phase 10.10)
+
+**Required in production**
+- `NEXT_PUBLIC_SITE_URL` (absolute https URL), `DATABASE_URL`.
+- HTTPS termination in front of the app (session cookies are `Secure`).
+- For password reset to work: `EMAIL_PROVIDER=resend`, `RESEND_API_KEY`, `EMAIL_FROM` **and** `NEXT_PUBLIC_SITE_URL`. Without them the forgot-password page says reset by email is unavailable; no token is created. (Adapter verified with mocks only.)
+- `TRUSTED_PROXY_HOPS` set to the number of proxies you operate (default 1; 0 if directly exposed).
+
+**Topology limits.** Rate limiting and AI limits live in the SQLite file: they are shared by all processes on that file only. Multiple hosts with separate databases are NOT jointly protected — add proxy/WAF limits. SQLite itself implies a single host.
+
+**Content-Security-Policy.** Static policy (self-only; no remote origins; no framing/plugins). `'unsafe-inline'` remains for script/style because Next.js emits inline bootstrap code and a nonce would force all public pages dynamic. Tested in real Chrome: no violations across the app.
+
+**Backups.** `npm run backup [file]` (SQLite online backup + integrity check; never overwrites). Schedule it and copy off-host.
+
+**Email preferences.** Each user can switch off email delivery on their notifications page (in-app unaffected).
+
+**Browser tests.** `npm run build`, then `npm run test:e2e` (uses installed Chrome/Edge via playwright-core; set `E2E_CHROME` to override; isolated temp DB; no real providers).
