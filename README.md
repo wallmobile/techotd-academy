@@ -224,10 +224,13 @@ form or URL is trusted as proof of ownership.
 ## Admin Area (Phase 10.1)
 
 Sign in as an ADMIN or SUPER_ADMIN. There is no public way to create one
-(public registration always makes a STUDENT), so the first admin must be
-created out-of-band (e.g. a one-off script calling
-`createUser({ ..., role: "SUPER_ADMIN" })`); everything after that is
-managed from the UI.
+(public registration always makes a STUDENT). Create the first one locally with
+`npm run setup:admin -- --name "Your Name" --email you@example.com` (uses the
+app's own hashing; password from `--password`, `ADMIN_PASSWORD`, or a random one
+printed once; refuses `NODE_ENV=production`; never changes an existing
+account's role). Login at `/login`, which redirects to `/admin`. Everything
+after that is managed from the UI. In production, create the first admin
+through your own operational process against the production database.
 
 **Routes** (all `noindex, nofollow`): `/admin` (dashboard), `/admin/users`,
 `/admin/users/[user-id]`, `/admin/students`, `/admin/students/[student-id]`,
