@@ -1,0 +1,75 @@
+// Starts the PRODUCTION server (`next start`, so run `npm run build` first)
+// against an isolated throwaway database, and drives real Chrome through
+// playwright-core. Nothing here touches data/app.db or real credentials.
+import { spawn, spawnSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { chromium } from "playwright-core";
+
+const ROOT = path.resolve(import.meta.dirname, "..");
+
+export const CHROME_CANDIDATES = [
+  process.env.E2E_CHROME,
+  "C:/Program Files/Google/Chrome/Application/chrome.exe",
+  "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe",
+  "/usr/bin/google-chrome",
+  "/usr/bin/chromium",
+].filter(Boolean);
+
+export function findChrome() {
+  return CHROME_CANDIDATES.find((p) => fs.existsSync(p));
+}
+
+export async function startStack({ port = 3210, env = {} } = {}) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "techotd-e2e-"));
+  const dbFile = path.join(dir, "e2e.db");
+  const DATABASE_URL = `file:${dbFile.split(path.sep).join("/")}`;
+  const seedFile = path.join(dir, "seed.json");
+  const seed = spawnSync(process.execPath, ["e2e/seed.mjs", seedFile], {
+    cwd: ROOT,
+    env: { ...process.env, DATABASE_URL },
+    encoding: "utf8",
+  });
+  if (seed.status !== 0) throw new Error(`seed failed: ${seed.stderr || seed.stdout}`);
+  const data = JSON.parse(fs.readFileSync(seedFile, "utf8"));
+
+  const serverEnv = { ...process.env, NODE_ENV: "production", DATABASE_URL, PORT: String(port), ...env };
+  for (const k of ["RESEND_API_KEY", "EMAIL_PROVIDER", "ANTHROPIC_API_KEY", "AI_PROVIDER", "CRON_SECRET"]) {
+    if (!(k in env)) delete serverEnv[k];
+  }
+  const logFile = path.join(dir, "server.log");
+  const log = fs.openSync(logFile, "a");
+  const server = spawn(process.execPath, ["node_modules/next/dist/bin/next", "start", "-p", String(port)], {
+    cwd: ROOT,
+    env: serverEnv,
+    stdio: ["ignore", log, log],
+  });
+  const base = `http://localhost:${port}`;
+  const deadline = Date.now() + 60_000;
+  for (;;) {
+    try {
+      const r = await fetch(base + "/login");
+      if (r.ok) break;
+    } catch {}
+    if (Date.now() > deadline) throw new Error("server did not start: " + fs.readFileSync(logFile, "utf8"));
+    await new Promise((r) => setTimeout(r, 400));
+  }
+  const chrome = findChrome();
+  if (!chrome) throw new Error("No Chrome/Edge found; set E2E_CHROME to a Chromium-based browser executable");
+  const browser = await chromium.launch({ executablePath: chrome, headless: true });
+  return {
+    base,
+    data,
+    dbFile,
+    dir,
+    logFile,
+    browser,
+    async stop() {
+      await browser.close();
+      server.kill();
+      await new Promise((r) => setTimeout(r, 500));
+      if (!process.env.E2E_KEEP) fs.rmSync(dir, { recursive: true, force: true });
+    },
+  };
+}
