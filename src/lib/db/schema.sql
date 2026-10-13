@@ -671,3 +671,11 @@ CREATE TABLE IF NOT EXISTS notification_deliveries (
 );
 
 CREATE INDEX IF NOT EXISTS idx_notification_deliveries_due ON notification_deliveries (status, next_attempt_at);
+
+-- Phase 10.8: indexes backing the analytics date-range aggregations.
+CREATE INDEX IF NOT EXISTS idx_users_created_at ON users (created_at);
+CREATE INDEX IF NOT EXISTS idx_batch_enrollments_created_at ON batch_enrollments (created_at);
+CREATE INDEX IF NOT EXISTS idx_payments_paid_on ON payments (paid_on);
+CREATE INDEX IF NOT EXISTS idx_fee_plans_created_at ON fee_plans (created_at);
+CREATE INDEX IF NOT EXISTS idx_certificates_issued_at ON certificates (issued_at);
+CREATE INDEX IF NOT EXISTS idx_job_applications_applied_at ON job_applications (applied_at);

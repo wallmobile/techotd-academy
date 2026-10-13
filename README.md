@@ -650,6 +650,65 @@ table (extended additively: `link`, `event_key`).
 - **Admin visibility:** `/admin/notifications/deliveries` (ADMIN and
   SUPER_ADMIN) shows provider status, counts and recent deliveries.
 
+## Phase 10.8 — Analytics and Reports
+
+`/admin/analytics`: operational figures aggregated directly from the real
+tables (parameterized `COUNT` / `SUM` / `GROUP BY`, backed by date indexes).
+Nothing is estimated, trended or invented; an empty period shows zeros and
+"No data in this period".
+
+**Period:** presets (today, last 7 / 30 days, this month) or a custom range
+(`?preset=custom&from=YYYY-MM-DD&to=YYYY-MM-DD`). **All boundaries are UTC
+calendar days, inclusive.** A range is validated server-side (valid dates,
+start ≤ end, not in the future, at most 366 days); anything else falls back to
+the last 30 days with a message. Reports are computed per request and show
+when they were generated — nothing is cached.
+
+**Sections and who sees them** (enforced on the server; the data is not
+fetched for roles that lack the section):
+
+| Section | Roles |
+| --- | --- |
+| Registrations, Enrollments, Certificates | SUPER_ADMIN, ADMIN |
+| Leads & enquiries | SUPER_ADMIN, ADMIN (all leads); COUNSELLOR (own assigned + unassigned queue, labelled) |
+| Fees & payments | SUPER_ADMIN, ADMIN, ACCOUNTANT |
+| Jobs & placements | SUPER_ADMIN, ADMIN, PLACEMENT_MANAGER |
+
+Students, trainers and content managers have no access.
+
+**Definitions**
+
+- *In period* metrics use the record's timestamp (leads/enrollments/fees/
+  certificates created or issued, applications received); *as of now* metrics
+  (status snapshots, outstanding, open jobs) ignore the period.
+- **Enrollment** = one batch enrollment (student + batch). Course-enrollment
+  rows are derived from these and never counted a second time.
+- **Collected** = counted payments by the date received (`paid_on`) on active
+  fees. Manually recorded and gateway-verified amounts are reported
+  separately; **voided payments and cancelled fees are excluded** (voids are
+  shown as their own line). Recorded manual payments are offline receipts,
+  not online revenue. Amounts are grouped per currency and never summed
+  across currencies.
+- **Outstanding** = net fee − counted payments, on active fees, where > 0;
+  *overdue* = of that, past the due date (as of now).
+- **Verified conversion** = a lead linked to a student account by the
+  conversion flow (in the period it was converted). Leads that were only
+  *marked* Converted are shown separately and never counted as conversions.
+- **Selected ≠ placed.** A verified placement needs explicit staff
+  confirmation; applications are reported by current status, placements only
+  when confirmed.
+
+**CSV export** (ADMIN / SUPER_ADMIN only): `/admin/analytics/export?type=summary|daily`
+with the same period. Aggregates only — no names, emails, phone numbers or
+ids. At most 1000 rows, `no-store`, never a public URL. Text cells beginning
+with `=`, `+`, `-`, `@`, tab or CR are prefixed with `'` to prevent
+spreadsheet formula injection; fields are RFC 4180 quoted; the file starts
+with a UTF-8 BOM.
+
+**Not implemented:** period-over-period comparisons or growth percentages,
+revenue forecasting, cohort / funnel analysis, scheduled reports, and
+per-trainer or per-course drill-downs.
+
 ## Phase Status
 
 - **Phase 9.1** Trainer foundation — done.
@@ -669,6 +728,7 @@ table (extended additively: `link`, `event_key`).
 - **Phase 10.5 — Certificates: COMPLETE** (PDF download + public verification; no QR/signatures).
 - **Phase 10.6 — Placement and Jobs: COMPLETE** (job board, applications, staff review, confirmed placements; no resume upload).
 - **Phase 10.7 — Notifications: COMPLETE** (in-app live; email adapter tested against mocks only; WhatsApp is an unconfigured boundary).
+- **Phase 10.8 — Analytics and Reports: COMPLETE** (real-data reports, role-scoped sections, safe CSV export).
 
 ## Known Limitations
 
