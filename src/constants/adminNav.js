@@ -25,7 +25,7 @@ export const adminNavItems = [
   { key: "courses", label: "Courses", href: "/admin/courses", icon: "courses", comingSoon: true, roles: MANAGERS },
   { key: "batches", label: "Batches", href: "/admin/batches", icon: "batches", comingSoon: true, roles: MANAGERS },
   { key: "fees", label: "Fees", href: "/admin/fees", icon: "payments", comingSoon: false, roles: FINANCE_ROLES },
-  { key: "certificates", label: "Certificates", href: "/admin/certificates", icon: "certificates", comingSoon: true, roles: MANAGERS },
+  { key: "certificates", label: "Certificates", href: "/admin/certificates", icon: "certificates", comingSoon: false, roles: MANAGERS },
   { key: "reports", label: "Reports", href: "/admin/reports", icon: "reports", comingSoon: true, roles: MANAGERS },
   { key: "placement", label: "Placement", href: "/admin/placement", icon: "placement", comingSoon: true, roles: MANAGERS },
   { key: "content", label: "Content", href: "/admin/content", icon: "content", comingSoon: true, roles: MANAGERS },

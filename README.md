@@ -482,6 +482,51 @@ add a provider checkout. None of that has been tested against a real provider.
 **Not implemented:** refunds, instalment schedules, tax invoices / GST,
 reminders or notifications, reconciliation reports, multi-currency.
 
+## Phase 10.5 — Certificates
+
+Real issuance, PDF download, public verification and revocation, built on the
+existing `certificates` table (extended additively — nothing dropped).
+
+- **Eligibility is explicit** and computed only from data the LMS can prove,
+  for one enrollment: (1) not cancelled, (2) marked **COMPLETED** by staff,
+  (3) **every course lesson completed** (`lesson_progress`). All three =
+  automatic issuance (`AUTO_COMPLETE`). Attendance and assignment counts are
+  shown for context only — no thresholds exist, so none are invented.
+- **Manual approval:** staff outside that rule can issue with a written reason
+  (≥ 10 characters). It is stored and displayed as `MANUAL_APPROVAL` with the
+  reason and approver — never as automatic completion. A cancelled enrollment
+  can never be issued.
+- **One active certificate per student + course** (checked in the issuing
+  transaction and backed by a partial unique index). Numbers
+  (`TOA-YYYY-XXXXXXXXXX`) and verification tokens are unique. A revoked
+  certificate can be followed by a new one.
+- **PDF:** generated on request from the record with a small built-in PDF
+  writer (no new dependency): TechOTD Academy branding, student name, course,
+  number, date and verification URL. It carries **no signature, seal,
+  accreditation or QR code** (none are configured). Names/titles outside
+  Latin-1 render as `?` in the PDF only (built-in fonts); the record and the
+  verification page keep the exact text. Revoked certificates can't be
+  downloaded.
+- **Verification:** `/verify-certificate/[token]` is public, not indexed, and
+  uses an unguessable token (the certificate number is *not* a lookup key).
+  It shows validity, number, holder name, course, issue date and issuer —
+  never email, phone, ids, enrollment data or the revocation reason. Unknown
+  or malformed tokens get one identical "not found" page. **There is no rate
+  limiting** on this route (the app has no limiter); tokens are the only
+  protection against enumeration.
+- **Audit:** issuance and revocation are written to `audit_log` and shown on
+  the certificate page; revocation needs a reason and keeps the record.
+
+**Routes:** `/admin/certificates`, `/admin/certificates/new`,
+`/admin/certificates/[certificate-id]` (+ `/download`), student
+`/student/certificates`, `/student/certificates/[certificate-id]` (+
+`/download`), public `/verify-certificate/[token]`. ADMIN and SUPER_ADMIN
+issue, revoke and download; students see and download only their own.
+
+**Not implemented:** bulk issuance, e-mailing certificates, QR codes,
+signatures/seals, templates per course, and per-course attendance/assignment
+completion rules.
+
 ## Phase Status
 
 - **Phase 9.1** Trainer foundation — done.
@@ -498,6 +543,7 @@ reminders or notifications, reconciliation reports, multi-currency.
 - **Phase 10.2 — CRM / Leads + Enquiry Persistence: COMPLETE** (see above). Public forms persist leads; `/admin/leads` with status, assignment, notes and counsellor-scoped access.
 - **Phase 10.3 — Student Enrollment + Batch Operations: COMPLETE** (see above; batch capacity deferred — the catalog has none).
 - **Phase 10.4 — Fees and Payments: COMPLETE** (manual payments; no payment gateway is integrated — see above).
+- **Phase 10.5 — Certificates: COMPLETE** (PDF download + public verification; no QR/signatures).
 
 ## Known Limitations
 

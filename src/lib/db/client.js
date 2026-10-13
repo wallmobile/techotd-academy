@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import path from "node:path";
 import fs from "node:fs";
 import DatabaseConstructor from "better-sqlite3";
@@ -45,6 +46,36 @@ function migrate(db) {
   // Phase 10.3: lead -> student conversion reference (leads table is from 10.2).
   addColumnIfMissing(db, "leads", "converted_user_id", "TEXT REFERENCES users (id) ON DELETE SET NULL");
   addColumnIfMissing(db, "leads", "converted_at", "TEXT");
+
+  // Phase 10.5: certificate issuance / verification / revocation columns.
+  addColumnIfMissing(db, "certificates", "enrollment_id", "TEXT");
+  addColumnIfMissing(db, "certificates", "verification_token", "TEXT");
+  addColumnIfMissing(db, "certificates", "issued_by", "TEXT REFERENCES users (id) ON DELETE SET NULL");
+  addColumnIfMissing(db, "certificates", "issuance_basis", "TEXT");
+  addColumnIfMissing(db, "certificates", "approval_note", "TEXT");
+  addColumnIfMissing(db, "certificates", "revoked_at", "TEXT");
+  addColumnIfMissing(db, "certificates", "revoked_reason", "TEXT");
+  addColumnIfMissing(db, "certificates", "revoked_by", "TEXT REFERENCES users (id) ON DELETE SET NULL");
+
+  // Any pre-existing certificate gets an unguessable verification token.
+  const untokened = db.prepare("SELECT id FROM certificates WHERE verification_token IS NULL").all();
+  const setToken = db.prepare("UPDATE certificates SET verification_token = ? WHERE id = ? AND verification_token IS NULL");
+  for (const row of untokened) setToken.run(crypto.randomBytes(18).toString("base64url"), row.id);
+
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_certificates_verification_token
+      ON certificates (verification_token) WHERE verification_token IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS idx_certificates_enrollment_id ON certificates (enrollment_id);
+  `);
+  // At most one ACTIVE certificate per student + course (issuance is also
+  // checked inside its transaction; this is the backstop).
+  try {
+    db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_certificates_one_active
+      ON certificates (student_id, course_slug) WHERE status = 'ACTIVE'`);
+  } catch {
+    // Pre-existing duplicate ACTIVE rows would block the index; the
+    // transactional check in issueCertificateTx still prevents new ones.
+  }
 }
 
 // `table`/`column`/`definition` are fixed literals from migrate() above,

@@ -79,22 +79,27 @@ export default async function StudentCertificateDetailPage({ params }) {
           )}
         </Card>
 
-        <Card className="flex flex-col items-start gap-2">
-          <h3 className="text-sm font-semibold text-dark">Download</h3>
-          <p className="text-sm text-muted">
-            PDF download isn&apos;t available yet — the certificate information above is accurate and
-            complete. A downloadable PDF will be added in a future update.
-          </p>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled
-            title="Coming soon"
-            aria-label="Download certificate as PDF (coming soon)"
-          >
-            Download PDF (Coming Soon)
-          </Button>
-        </Card>
+        {certificate.status === "REVOKED" ? (
+          <Card className="flex flex-col items-start gap-2 border-danger/30">
+            <h3 className="text-sm font-semibold text-danger">This certificate has been revoked</h3>
+            <p className="text-sm text-muted">
+              It is no longer valid and can&apos;t be downloaded. Please contact TechOTD Academy support if you believe this is a mistake.
+            </p>
+          </Card>
+        ) : (
+          <Card className="flex flex-col items-start gap-3">
+            <h3 className="text-sm font-semibold text-dark">Download</h3>
+            <p className="text-sm text-muted">Download your certificate as a PDF.</p>
+            <Button href={`/student/certificates/${certificate.id}/download`} variant="outline" size="sm" as="a">
+              Download PDF
+            </Button>
+            {certificate.verifyUrl && (
+              <p className="break-all text-xs text-muted">
+                Anyone can verify this certificate at <span className="font-medium text-text">{certificate.verifyUrl}</span>
+              </p>
+            )}
+          </Card>
+        )}
       </div>
     </StudentShell>
   );

@@ -559,3 +559,11 @@ CREATE TABLE IF NOT EXISTS audit_log (
 );
 
 CREATE INDEX IF NOT EXISTS idx_audit_log_entity ON audit_log (entity_type, entity_id);
+
+-- Phase 10.5 note: the `certificates` table above is extended (additively)
+-- by migrate() in src/lib/db/client.js with: enrollment_id,
+-- verification_token (unguessable public identifier; UNIQUE index),
+-- issued_by, issuance_basis ('AUTO_COMPLETE' | 'MANUAL_APPROVAL'),
+-- approval_note, revoked_at, revoked_reason, revoked_by, plus a partial
+-- UNIQUE index allowing at most one ACTIVE certificate per
+-- (student_id, course_slug). Nothing is dropped; REVOKED rows are kept.
