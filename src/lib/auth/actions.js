@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
+import { getClientIp, hitLimit } from "@/lib/rateLimit";
 import { startSession, endSession } from "@/lib/auth/session";
 import { roleHomeRoute } from "@/lib/auth/roles";
 import {
@@ -75,6 +76,21 @@ export async function loginAction(_prevState, formData) {
     return { status: "error", errors, values: { ...values, password: "" } };
   }
 
+  // Throttle guessing: per (ip, email) and per ip. Counted on every attempt;
+  // the message is generic so it doesn't reveal whether the email exists.
+  const ip = await getClientIp();
+  const email = values.email.trim().toLowerCase();
+  const perAccount = hitLimit("login", ip, email);
+  const perIp = hitLimit("loginIp", ip);
+  if (!perAccount.allowed || !perIp.allowed) {
+    return {
+      status: "error",
+      errors: {},
+      formError: "Too many sign-in attempts. Please wait a few minutes and try again.",
+      values: { ...values, password: "" },
+    };
+  }
+
   const user = findUserByEmailInternal(values.email);
   const passwordToCompare = user ? user.passwordHash : DUMMY_PASSWORD_HASH;
   const passwordMatches = await verifyPassword(values.password, passwordToCompare);
@@ -122,7 +138,11 @@ export async function forgotPasswordAction(_prevState, formData) {
     return { status: "error", errors, values };
   }
 
-  const result = createPasswordResetTokenForEmail(values.email);
+  // Throttle reset requests per (ip, email). Over the limit we still return
+  // the same public response (no token is created), so this reveals nothing.
+  const ip = await getClientIp();
+  const allowed = hitLimit("forgotPassword", ip, values.email.trim().toLowerCase()).allowed;
+  const result = allowed ? createPasswordResetTokenForEmail(values.email) : null;
 
   // No email delivery is configured in this phase (see Phase 7 report), so
   // there is nothing to "send". In development only, the reset link is

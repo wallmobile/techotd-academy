@@ -5,6 +5,9 @@ export default function robots() {
     rules: {
       userAgent: "*",
       allow: "/",
+      // Private, authenticated areas and the certificate-verification lookup
+      // are not for crawlers (they are also noindex).
+      disallow: ["/admin", "/student", "/trainer", "/verify-certificate"],
     },
     sitemap: `${siteUrl}/sitemap.xml`,
   };

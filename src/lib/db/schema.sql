@@ -622,3 +622,19 @@ CREATE TABLE IF NOT EXISTS job_applications (
 
 CREATE INDEX IF NOT EXISTS idx_job_applications_student ON job_applications (student_user_id);
 CREATE INDEX IF NOT EXISTS idx_job_applications_status ON job_applications (status);
+
+-- --------------------------------------------------------------------------
+-- Rate limiting (production-readiness hardening)
+--
+-- One row per limiter key and fixed window. Stored in the same SQLite file as
+-- everything else, so every server process using this database shares the
+-- counters (unlike per-process memory). It does NOT span multiple hosts that
+-- each have their own database file — see README.
+-- --------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS rate_limits (
+  key           TEXT PRIMARY KEY,
+  window_start  INTEGER NOT NULL,
+  count         INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_rate_limits_window_start ON rate_limits (window_start);

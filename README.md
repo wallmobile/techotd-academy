@@ -576,6 +576,36 @@ scheduling, e-mail/WhatsApp notifications, saved jobs, per-course
 eligibility rules, and a placement-statistics dashboard beyond the counts
 above.
 
+## Production Readiness Notes
+
+Findings from the pre-Phase-10.7 audit and what was done about them:
+
+- **Throttling (added).** Sign-in (10 per 15 min per IP+email, 60 per IP),
+  password-reset requests (5 per 15 min per IP+email), the public enquiry
+  forms (10 per 10 min per IP) and the public certificate-verification page
+  (60 per minute per IP) are rate limited. Counters live in the
+  `rate_limits` table of the **same SQLite file**, so every server process on
+  that database shares them; identifiers are hashed. **Limit of scope:** it
+  does not span several hosts with separate database files, and the client IP
+  is read from `X-Forwarded-For` / `X-Real-IP`, which is only trustworthy behind
+  a reverse proxy you control that overwrites those headers. A multi-host or
+  internet-exposed deployment should also rate limit at the proxy/WAF.
+- **Security headers (added).** `X-Content-Type-Options`, `X-Frame-Options:
+  DENY`, `Referrer-Policy`, `Permissions-Policy`, and HSTS in production. No
+  Content-Security-Policy is set yet (Next.js inline scripts need a nonce setup).
+- **robots.txt (changed).** `/admin`, `/student`, `/trainer` and
+  `/verify-certificate` are disallowed in addition to being `noindex`.
+- **Site URL.** Set `NEXT_PUBLIC_SITE_URL` in production. Without it, outside
+  production the placeholder `https://academy.techotd.com` is used for
+  metadata, and in production certificates carry only the site-relative
+  verification path instead of a guessed domain.
+- **Secrets** are read only from server environment variables
+  (`DATABASE_URL`, `PAYMENT_*`, and the notification / AI settings below).
+  None are committed; `.env*` and database files are git-ignored.
+- **Not browser-tested.** No browser automation exists in this repository;
+  flows are verified through automated tests and HTTP-level checks of
+  production builds.
+
 ## Phase Status
 
 - **Phase 9.1** Trainer foundation — done.

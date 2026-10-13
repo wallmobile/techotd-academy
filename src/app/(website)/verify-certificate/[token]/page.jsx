@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { getPublicVerification } from "@/lib/certificates/verify";
+import { getClientIp, hitLimit } from "@/lib/rateLimit";
 import { Container } from "@/components/layout/Container";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
@@ -21,6 +22,21 @@ function formatDate(value) {
 
 export default async function VerifyCertificatePage({ params }) {
   const { token } = await params;
+
+  // Abuse control: bounded lookups per client IP (shared across processes on
+  // this database). Over the limit, no lookup is performed at all.
+  const ip = await getClientIp();
+  if (!hitLimit("verifyCertificate", ip).allowed) {
+    return (
+      <Container className="py-16">
+        <Card className="mx-auto w-full max-w-xl text-center">
+          <h1 className="text-xl font-semibold tracking-tight text-dark">Too many requests</h1>
+          <p className="mt-2 text-sm text-muted">Please wait a minute and try again.</p>
+        </Card>
+      </Container>
+    );
+  }
+
   const result = getPublicVerification(token);
   if (!result) notFound();
 

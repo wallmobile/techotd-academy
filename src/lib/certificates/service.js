@@ -51,8 +51,12 @@ const MESSAGES = {
 export const certificateMessage = (reason) => MESSAGES[reason] || "Something went wrong.";
 const fail = (reason, extra = {}) => ({ ok: false, reason, message: certificateMessage(reason), ...extra });
 
+// In production NEXT_PUBLIC_SITE_URL must be set; without it we return the
+// site-relative path rather than printing a guessed domain on a certificate.
 export function verificationUrl(token) {
-  const base = (process.env.NEXT_PUBLIC_SITE_URL || "https://academy.techotd.com").replace(/\/+$/, "");
+  const configured = process.env.NEXT_PUBLIC_SITE_URL;
+  if (!configured && process.env.NODE_ENV === "production") return `/verify-certificate/${token}`;
+  const base = (configured || "https://academy.techotd.com").replace(/\/+$/, "");
   return `${base}/verify-certificate/${token}`;
 }
 
