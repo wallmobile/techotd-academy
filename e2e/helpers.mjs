@@ -13,6 +13,13 @@ export const VIEWPORTS = {
 // fails the test that triggered it.
 const ALLOWED_CONSOLE = [/status of 40[134] \(/i]; // expected 401/403/404 resource responses
 
+// Streaming pages first flush a loading skeleton (role=status, aria-busy=true, from
+// loading.jsx) and replace it with the real content. A "load" event can fire while
+// the skeleton is still showing, so every read waits for the skeleton to go away.
+export async function settled(page, timeout = 15000) {
+  await page.waitForFunction(() => !document.querySelector('[role="status"][aria-busy="true"]'), undefined, { timeout });
+}
+
 export class Session {
   constructor(stack, label, { viewport = VIEWPORTS.desktop } = {}) {
     this.stack = stack;
@@ -43,7 +50,9 @@ export class Session {
   }
 
   async goto(p, opts) {
-    return this.page.goto(this.url(p), { waitUntil: "load", ...opts });
+    const response = await this.page.goto(this.url(p), { waitUntil: "load", ...opts });
+    await settled(this.page);
+    return response;
   }
 
   async login(userKey, password = this.stack.data.password) {
@@ -93,5 +102,6 @@ export function openDb(stack, { readonly = true } = {}) {
 }
 
 export async function bodyText(page) {
+  await settled(page);
   return (await page.locator("body").innerText()).replace(/\s+/g, " ");
 }

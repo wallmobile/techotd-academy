@@ -60,11 +60,15 @@ test("E1 a website enquiry appears in the CRM; a counsellor sees only the unassi
   state.leadUrl = admin.page.url();
   await admin.page.getByLabel("Assigned to").selectOption(stack.data.users.counsellor.id);
   await admin.page.getByRole("button", { name: /save assignment/i }).click();
-  await admin.page.getByText(/assign|saved|updated/i).first().waitFor();
-  const db = openDb(stack);
-  const lead = db.prepare("SELECT assigned_to FROM leads WHERE email = ?").get("crm.lead@example.test");
-  assert.equal(lead.assigned_to, stack.data.users.counsellor.id);
-  db.close();
+  // wait for the action to be persisted (a label containing "assign" is on the page before it runs)
+  let assignedTo = null;
+  for (let i = 0; i < 40 && assignedTo !== stack.data.users.counsellor.id; i += 1) {
+    const db = openDb(stack);
+    assignedTo = db.prepare("SELECT assigned_to FROM leads WHERE email = ?").get("crm.lead@example.test").assigned_to;
+    db.close();
+    if (assignedTo !== stack.data.users.counsellor.id) await admin.page.waitForTimeout(250);
+  }
+  assert.equal(assignedTo, stack.data.users.counsellor.id);
   admin.assertClean("lead assignment");
 });
 
