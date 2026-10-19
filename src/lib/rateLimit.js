@@ -58,6 +58,8 @@ export const LIMITS = {
   enquiry: { limit: 10, windowSeconds: 10 * 60 },
   verifyCertificate: { limit: 60, windowSeconds: 60 },
   aiAssistant: { limit: 20, windowSeconds: 10 * 60 },
+  // Attempts to supply the current password when changing it (keyed by user id).
+  changePassword: { limit: 8, windowSeconds: 15 * 60 },
 };
 
 // Returns { allowed, remaining, retryAfterSeconds }. Every named limiter is

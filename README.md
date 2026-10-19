@@ -856,13 +856,14 @@ feedback, trainer/admin AI tools, and streaming responses.
   Requirements) but was **NOT VERIFIED** on an actual Windows machine —
   this project was built and tested in a Linux sandbox.
 
-## Phase 10.11 — Courses & Batches Management
+## Phase 10.11 — Courses & Batches Management and Staff Password Change
 
 **Routes** (ADMIN / SUPER_ADMIN only, `noindex`; enforced per page and per action on the server):
 `/admin/courses` (list with search, category/level/status filters, sort, 20 per page), `/admin/courses/new`,
 `/admin/courses/[course-slug]` (details, edit, publish/unpublish, its batches, change history),
 `/admin/batches` (search, course/status/mode filters, sort, pagination), `/admin/batches/new`,
 `/admin/batches/[batch-id]` (details, edit, status, trainers, enrollments, change history).
+Staff self-service: `/admin/account` (any admin-area staff role).
 
 **How it fits the existing data model.** Courses and batches have always been defined in code
 (`src/data/courses.js`, `batches.js`) and every other table references them by slug / id string, so
@@ -896,6 +897,11 @@ immediately instead of being frozen at build time.
 
 **Migration.** Purely additive (`CREATE TABLE IF NOT EXISTS`); tested against a copy of the existing development
 database (no rows lost, integrity OK, idempotent). `npm run backup` includes the new tables.
+
+**Staff password change** (`/admin/account`): requires the current password, validates the new one, revokes every
+session for the user and starts a fresh one for the current browser (remember-me preserved), rate limits
+current-password attempts (8 per 15 minutes per account), and audits the change without any password data.
+Students keep their own flow on the profile page; trainers do not yet have a self-service password page.
 
 ## Deployment Prerequisites & Verification (Phase 10.10)
 

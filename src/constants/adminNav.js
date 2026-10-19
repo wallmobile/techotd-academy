@@ -33,6 +33,7 @@ export const adminNavItems = [
   { key: "jobs", label: "Jobs & Placement", href: "/admin/jobs", icon: "placement", comingSoon: false, roles: PLACEMENT_ROLES },
   { key: "content", label: "Content", href: "/admin/content", icon: "content", comingSoon: true, roles: MANAGERS },
   { key: "settings", label: "Settings", href: "/admin/settings", icon: "settings", comingSoon: true, roles: MANAGERS },
+  { key: "account", label: "My Account", href: "/admin/account", icon: "profile", comingSoon: false, roles: null },
 ];
 
 // Super Admin console nav (/super-admin). SUPER_ADMIN only — enforced by the
@@ -41,4 +42,5 @@ export const superAdminNavItems = [
   { key: "overview", label: "Overview", href: "/super-admin", icon: "dashboard", exact: true, comingSoon: false, roles: SUPER_ADMIN_ROLES },
   { key: "staff", label: "Staff Accounts", href: "/super-admin/staff", icon: "users", comingSoon: false, roles: SUPER_ADMIN_ROLES },
   { key: "admin", label: "Admin Panel", href: "/admin", icon: "reports", exact: true, comingSoon: false, roles: SUPER_ADMIN_ROLES },
+  { key: "account", label: "My Account", href: "/admin/account", icon: "profile", comingSoon: false, roles: SUPER_ADMIN_ROLES },
 ];
