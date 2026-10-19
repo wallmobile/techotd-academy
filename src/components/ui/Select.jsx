@@ -3,6 +3,12 @@ import { cn } from "@/lib/utils";
 /**
  * `icon` is optional and purely presentational, same as Input's — omitting
  * it renders exactly as before.
+ *
+ * React 19 resets a form's fields after a failed Server Action and restores a
+ * <select> to the option it was FIRST mounted with, ignoring a later
+ * defaultValue (e.g. the value echoed back in the action state). Keying the
+ * element on defaultValue remounts it when that value changes, so the user's
+ * choice survives a validation error.
  */
 export function Select({ label, id, error, icon, className, children, ...props }) {
   const inputId = id || props.name;
@@ -24,6 +30,7 @@ export function Select({ label, id, error, icon, className, children, ...props }
           </span>
         )}
         <select
+          key={props.defaultValue === undefined ? undefined : String(props.defaultValue)}
           id={inputId}
           className={cn(
             "h-11 w-full rounded-sm border border-border bg-white px-3.5 text-sm text-text",

@@ -334,7 +334,7 @@ test("export: admins only, aggregates only, bounded, and refuses invalid ranges"
   assert.equal(daily.ok, true);
   assert.equal(daily.csv.trim().split("\r\n").length, 1 + 31);
 
-  const long = await buildExport({ type: "daily", input: { preset: "custom", from: "2025-10-13", to: new Date().toISOString().slice(0, 10) } });
+  const long = await buildExport({ type: "daily", input: { preset: "custom", from: new Date(Date.now() - 300 * 86400000).toISOString().slice(0, 10), to: new Date().toISOString().slice(0, 10) } });
   assert.ok(long.csv.trim().split("\r\n").length - 1 <= 1000);
 
   for (const input of [{ preset: "custom", from: "2019-03-31", to: "2019-03-01" }, { preset: "custom", from: "garbage", to: "x" }]) {
