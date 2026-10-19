@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import path from "node:path";
 import fs from "node:fs";
 import DatabaseConstructor from "better-sqlite3";
+import { parseDatabaseUrl } from "@/lib/config";
 
 // --- Data-access boundary -------------------------------------------------
 //
@@ -23,8 +24,12 @@ import DatabaseConstructor from "better-sqlite3";
 // rewrite. See the Phase 7 report for the full evaluation.
 
 function resolveDatabasePath() {
-  const url = process.env.DATABASE_URL || "file:./data/app.db";
-  const rawPath = url.startsWith("file:") ? url.slice("file:".length) : url;
+  // Only SQLite is supported: an unsupported scheme (postgres://, mysql://...)
+  // is a misconfiguration and must fail loudly instead of being turned into
+  // an unexpected, empty database file (see src/lib/config.js).
+  const parsed = parseDatabaseUrl(process.env.DATABASE_URL);
+  if (!parsed.ok) throw new Error(parsed.error);
+  const rawPath = parsed.rawPath;
   if (path.isAbsolute(rawPath)) return rawPath;
 
   // Deliberately scoped to a literal "data" subfolder (rather than
@@ -102,6 +107,20 @@ function addColumnIfMissing(db, table, column, definition) {
   }
 }
 
+/**
+ * Creates the schema and applies the additive migrations as ONE IMMEDIATE
+ * transaction (SQLite DDL is transactional): either everything is applied or,
+ * if any statement fails, nothing is - a failed start can't leave a half
+ * migrated database behind. IMMEDIATE also serializes processes that start at
+ * the same moment (e.g. Next's parallel build workers).
+ */
+export function initializeDatabase(db, schemaSql) {
+  db.transaction(() => {
+    db.exec(schemaSql);
+    migrate(db);
+  }).immediate();
+}
+
 function createConnection() {
   const dbPath = resolveDatabasePath();
   fs.mkdirSync(path.dirname(dbPath), { recursive: true });
@@ -112,8 +131,7 @@ function createConnection() {
 
   const schemaPath = path.join(process.cwd(), "src", "lib", "db", "schema.sql");
   const schema = fs.readFileSync(schemaPath, "utf-8");
-  db.exec(schema);
-  migrate(db);
+  initializeDatabase(db, schema);
 
   return db;
 }
