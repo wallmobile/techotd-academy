@@ -1,5 +1,5 @@
 import { CourseExplorer } from "@/components/courses/CourseExplorer";
-import { courses } from "@/data/courses";
+import { listCourses } from "@/lib/catalog";
 import { categories } from "@/data/categories";
 
 export const metadata = {
@@ -14,6 +14,6 @@ export default async function CoursesPage({ searchParams }) {
     typeof resolvedSearchParams.category === "string" ? resolvedSearchParams.category : undefined;
 
   return (
-    <CourseExplorer courses={courses} categories={categories} initialCategory={initialCategory} />
+    <CourseExplorer courses={listCourses({ publishedOnly: true })} categories={categories} initialCategory={initialCategory} />
   );
 }

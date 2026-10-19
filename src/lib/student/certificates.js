@@ -6,7 +6,7 @@
 import { getCurrentUser } from "@/lib/auth/currentUser";
 import { getOrCreateStudentProfile } from "@/lib/db/studentProfiles";
 import { listCertificatesForStudent, getCertificateById } from "@/lib/db/certificates";
-import { getCourseBySlug } from "@/data/courses";
+import { getCourse } from "@/lib/catalog";
 import { renderCertificatePdf, verificationUrl } from "@/lib/certificates/service";
 
 // Only what a student needs: staff-side fields (issuer, approval note,
@@ -33,7 +33,7 @@ export async function getMyCertificates() {
   const profile = getOrCreateStudentProfile(user.id);
 
   return listCertificatesForStudent(profile.id)
-    .map((certificate) => ({ ...publicView(certificate), course: getCourseBySlug(certificate.courseSlug) }))
+    .map((certificate) => ({ ...publicView(certificate), course: getCourse(certificate.courseSlug) }))
     .filter((certificate) => Boolean(certificate.course));
 }
 
@@ -50,7 +50,7 @@ export async function getCertificateDetailForStudent(certificateId) {
   if (!certificate) return null;
   if (certificate.studentId !== profile.id) return null;
 
-  const course = getCourseBySlug(certificate.courseSlug);
+  const course = getCourse(certificate.courseSlug);
   if (!course) return null;
 
   return { certificate: publicView(certificate), course, studentName: user.name };

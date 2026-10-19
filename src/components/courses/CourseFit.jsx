@@ -3,7 +3,7 @@ import { Container } from "@/components/layout/Container";
 import { Reveal } from "@/components/shared/Reveal";
 import { ReadinessCheck } from "@/components/courses/ReadinessCheck";
 import { CheckIcon, Gradient } from "@/components/training/icons";
-import { courses, getRelatedCourses } from "@/data/courses";
+import { listCourses, getRelatedCourses } from "@/lib/catalog";
 
 /** Honest "maybe not yet" pointers, derived from the course's level. */
 function buildCaveats(course) {
@@ -20,7 +20,7 @@ function buildCaveats(course) {
   // Prefer a related beginner course (curated next steps first), then any beginner course.
   const starter =
     getRelatedCourses(course, 8).find((c) => c.level === "Beginner") ??
-    courses.find((c) => c.level === "Beginner" && c.slug !== course.slug);
+    listCourses({ publishedOnly: true }).find((c) => c.level === "Beginner" && c.slug !== course.slug);
 
   return {
     points: [

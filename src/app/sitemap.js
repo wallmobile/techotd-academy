@@ -1,12 +1,15 @@
-import { courses } from "@/data/courses";
+import { listCourses } from "@/lib/catalog";
 import { trainingModes } from "@/data/trainingModes";
+
+// Per request: the catalog is admin-editable, and unpublished courses must not be listed.
+export const dynamic = "force-dynamic";
 
 export default function sitemap() {
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://academy.techotd.com";
   const lastModified = new Date();
 
   const staticRoutes = ["/", "/courses", "/batches", "/trainers", "/careers", "/blog", "/about", "/book-demo", "/enquiry"];
-  const courseRoutes = courses.map((course) => `/courses/${course.slug}`);
+  const courseRoutes = listCourses({ publishedOnly: true }).map((course) => `/courses/${course.slug}`);
   const trainingRoutes = trainingModes.map((mode) => `/training/${mode.slug}`);
 
   const priorityFor = (path) => {

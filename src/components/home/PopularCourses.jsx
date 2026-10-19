@@ -1,12 +1,13 @@
 import { Section } from "@/components/shared/Section";
 import { PopularCoursesCarousel } from "@/components/home/PopularCoursesCarousel";
-import { courses } from "@/data/courses";
-import { batches } from "@/data/batches";
+import { listCourses, listBatches } from "@/lib/catalog";
 
 // Only fields that exist in the data are surfaced: project/module counts
 // come from the course catalog and "next batch" from the sample batch list.
 // No learner counts or scholarship claims are shown because no such data exists.
-const slides = [...courses]
+function getSlides() {
+  const batches = listBatches({ publicOnly: true });
+  return [...listCourses({ publishedOnly: true })]
   .sort((a, b) => Number(b.popular) - Number(a.popular))
   .map((course) => {
     const batch = batches.find((item) => item.courseSlug === course.slug);
@@ -24,8 +25,10 @@ const slides = [...courses]
       nextBatch: batch ? batch.startDate : null,
     };
   });
+}
 
 export function PopularCourses() {
+  const slides = getSlides();
   return (
     <Section tone="surface" className="bg-gradient-to-b from-surface to-primary/10">
       <div className="mx-auto mb-10 flex max-w-3xl flex-col items-center gap-4 text-center">

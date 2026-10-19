@@ -3,8 +3,8 @@ import { Button } from "@/components/ui/Button";
 import { ArrowLink } from "@/components/shared/ArrowLink";
 import { Reveal } from "@/components/shared/Reveal";
 import { BatchStatus } from "@/components/batches/BatchStatus";
-import { batches } from "@/data/batches";
-import { getCourseBySlug, displayDuration } from "@/data/courses";
+import { listBatches, getCourse } from "@/lib/catalog";
+import { displayDuration } from "@/data/courses";
 import { cn } from "@/lib/utils";
 
 const ACCENTS = [
@@ -46,9 +46,9 @@ const icons = {
 };
 
 export function UpcomingBatches() {
-  const upcoming = batches
+  const upcoming = listBatches({ publicOnly: true })
     .map((batch) => {
-      const course = getCourseBySlug(batch.courseSlug);
+      const course = getCourse(batch.courseSlug);
       return course ? { ...batch, course } : null;
     })
     .filter(Boolean)

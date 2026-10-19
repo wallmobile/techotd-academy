@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Section } from "@/components/shared/Section";
 import { categories } from "@/data/categories";
-import { courses } from "@/data/courses";
+import { listCourses } from "@/lib/catalog";
 import { cn } from "@/lib/utils";
 
 // Alternates the two brand accents so the grid reads as one system — never
@@ -23,13 +23,17 @@ const MAX_TECH = 4;
 
 // Course count and technologies are derived from the course catalog, so the
 // card never claims more than the data supports.
-const items = categories.map((category) => {
-  const inCategory = courses.filter((course) => course.categorySlug === category.slug);
-  const technologies = [...new Set(inCategory.flatMap((course) => course.technologies))];
-  return { ...category, courseCount: inCategory.length, technologies };
-});
+function getItems() {
+  const courses = listCourses({ publishedOnly: true });
+  return categories.map((category) => {
+    const inCategory = courses.filter((course) => course.categorySlug === category.slug);
+    const technologies = [...new Set(inCategory.flatMap((course) => course.technologies))];
+    return { ...category, courseCount: inCategory.length, technologies };
+  });
+}
 
 export function LearningCategories() {
+  const items = getItems();
   return (
     <Section>
       <div className="mx-auto mb-10 flex max-w-2xl flex-col items-center gap-3 text-center">

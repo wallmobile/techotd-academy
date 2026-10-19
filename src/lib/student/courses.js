@@ -2,8 +2,7 @@ import { getCurrentUser } from "@/lib/auth/currentUser";
 import { getOrCreateStudentProfile } from "@/lib/db/studentProfiles";
 import { listCourseEnrollmentsForStudent } from "@/lib/db/courseEnrollments";
 import { listBatchEnrollmentsForStudent } from "@/lib/db/batchEnrollments";
-import { getCourseBySlug } from "@/data/courses";
-import { getBatchById } from "@/data/batches";
+import { getBatch, getCourse } from "@/lib/catalog";
 import { computeCourseProgress } from "@/lib/student/progress";
 
 // Same pattern as src/lib/student/dashboard.js: the UI calls these
@@ -27,7 +26,7 @@ export async function getMyCourseEnrollments() {
   return listCourseEnrollmentsForStudent(profile.id)
     .filter((enrollment) => enrollment.status !== "CANCELLED")
     .map((enrollment) => {
-      const course = getCourseBySlug(enrollment.courseSlug);
+      const course = getCourse(enrollment.courseSlug);
       if (!course) return { ...enrollment, course: null, progress: 0 };
       return { ...enrollment, course, progress: computeCourseProgress(profile.id, course).percent };
     })
@@ -49,7 +48,7 @@ export async function getMyCourseEnrollments() {
 // needs, so the /learn route doesn't have to re-derive enrollment state a
 // second time.
 export async function getStudentCourseDetail(slug) {
-  const course = getCourseBySlug(slug);
+  const course = getCourse(slug);
   if (!course) return null;
 
   const user = await getCurrentUser();
@@ -67,7 +66,7 @@ export async function getStudentCourseDetail(slug) {
   const batchEnrollment =
     listBatchEnrollmentsForStudent(profile.id)
       .filter((e) => e.status !== "CANCELLED")
-      .map((e) => ({ ...e, batch: getBatchById(e.batchId) }))
+      .map((e) => ({ ...e, batch: getBatch(e.batchId) }))
       .find((e) => e.batch && e.batch.courseSlug === course.slug) || null;
 
   const progressDetail = enrollment ? computeCourseProgress(profile.id, course) : null;

@@ -4,11 +4,10 @@ import { useMemo, useState } from "react";
 import { Container } from "@/components/layout/Container";
 import { BatchSearch } from "@/components/batches/BatchSearch";
 import { BatchGrid } from "@/components/batches/BatchGrid";
-import { getCourseBySlug } from "@/data/courses";
 import { cn } from "@/lib/utils";
 
-function enrich(batch) {
-  const course = getCourseBySlug(batch.courseSlug);
+function enrich(batch, courseBySlug) {
+  const course = courseBySlug.get(batch.courseSlug);
   return course ? { ...batch, course } : null;
 }
 
@@ -62,13 +61,18 @@ function countBy(entries, key) {
   return counts;
 }
 
-export function BatchExplorer({ batches }) {
+// `courses` is the published catalog, passed from the server page (the catalog is
+// database-backed and can't be imported here).
+export function BatchExplorer({ batches, courses = [] }) {
   const [query, setQuery] = useState("");
   const [mode, setMode] = useState("all");
   const [status, setStatus] = useState("all");
   const [category, setCategory] = useState("all");
 
-  const enriched = useMemo(() => batches.map(enrich).filter(Boolean), [batches]);
+  const enriched = useMemo(() => {
+    const courseBySlug = new Map(courses.map((course) => [course.slug, course]));
+    return batches.map((batch) => enrich(batch, courseBySlug)).filter(Boolean);
+  }, [batches, courses]);
 
   const categories = useMemo(() => [...new Set(enriched.map((entry) => entry.course.category))], [enriched]);
   const modeOptions = useMemo(() => {

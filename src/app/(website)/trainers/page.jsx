@@ -7,7 +7,7 @@ import { TrainerExplorer } from "@/components/trainers/TrainerExplorer";
 import { FaqAccordion } from "@/components/shared/FaqAccordion";
 import { Gradient } from "@/components/training/icons";
 import { trainers } from "@/data/trainers";
-import { getCourseBySlug } from "@/data/courses";
+import { getCourse } from "@/lib/catalog";
 import { staggerContainer } from "@/lib/motion";
 
 export const metadata = {
@@ -47,7 +47,7 @@ const COURSE_BY_ROLE = [
 
 function courseFor(trainer) {
   const match = COURSE_BY_ROLE.find(([keyword]) => trainer.role.includes(keyword));
-  const course = match ? getCourseBySlug(match[1]) : null;
+  const course = match ? getCourse(match[1], { publishedOnly: true }) : null;
   return course ? { slug: course.slug, title: course.title, initials: course.initials } : null;
 }
 

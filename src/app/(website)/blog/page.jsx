@@ -8,7 +8,8 @@ import { TechGlossary } from "@/components/resources/TechGlossary";
 import { InterviewChecklist } from "@/components/resources/InterviewChecklist";
 import { CourseFinder } from "@/components/resources/CourseFinder";
 import { GlowBackdrop, Gradient } from "@/components/training/icons";
-import { courses, getCourseBySlug, displayDuration } from "@/data/courses";
+import { listCourses, getCourse } from "@/lib/catalog";
+import { displayDuration } from "@/data/courses";
 import { techInfo, techCategories } from "@/data/techInfo";
 import { staggerContainer } from "@/lib/motion";
 
@@ -86,6 +87,7 @@ function ResourceShelf() {
 }
 
 export default function ResourcesPage() {
+  const courses = listCourses({ publishedOnly: true });
   const terms = Object.keys(techInfo)
     .sort((a, b) => a.localeCompare(b))
     .map((name) => ({
@@ -153,7 +155,7 @@ export default function ResourcesPage() {
                 <Reveal variants={staggerContainer} className="mt-6">
                   <ol className="grid items-stretch gap-3 sm:grid-cols-2 lg:flex lg:gap-0">
                     {path.steps.map((slug, index) => {
-                      const course = getCourseBySlug(slug);
+                      const course = getCourse(slug, { publishedOnly: true });
                       if (!course) return null;
                       return (
                         <RevealItem key={slug} as="li" className="flex flex-1 items-stretch lg:items-center">

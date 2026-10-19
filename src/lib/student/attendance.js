@@ -7,8 +7,7 @@ import { getCurrentUser } from "@/lib/auth/currentUser";
 import { getOrCreateStudentProfile } from "@/lib/db/studentProfiles";
 import { listAttendanceForStudent } from "@/lib/db/attendanceRecords";
 import { getClassSessionById } from "@/lib/db/classSessions";
-import { getBatchById } from "@/data/batches";
-import { getCourseBySlug } from "@/data/courses";
+import { getBatch, getCourse } from "@/lib/catalog";
 
 // "Attended" counts PRESENT only; LATE and EXCUSED are their own stats
 // (a late arrival isn't the same as being on time, and an excused
@@ -44,12 +43,12 @@ export async function getMyAttendance() {
   if (records.length === 0) return { records: [], stats: null };
 
   const enriched = records.map((record) => {
-    const batch = getBatchById(record.batchId);
+    const batch = getBatch(record.batchId);
     const session = record.classSessionId ? getClassSessionById(record.classSessionId) : null;
     return {
       ...record,
       batch,
-      course: batch ? getCourseBySlug(batch.courseSlug) : null,
+      course: batch ? getCourse(batch.courseSlug) : null,
       session,
     };
   });

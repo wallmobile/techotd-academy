@@ -8,8 +8,7 @@
 
 import { getCurrentUser } from "@/lib/auth/currentUser";
 import { listBatchIdsForTrainer, isBatchAssignedToTrainer } from "@/lib/db/trainerBatchAssignments";
-import { getBatchById } from "@/data/batches";
-import { getCourseBySlug } from "@/data/courses";
+import { getBatch, getCourse } from "@/lib/catalog";
 
 // Returns null for anyone who isn't a signed-in TRAINER — every caller
 // treats that identically to "nothing to show", never a distinct error
@@ -31,9 +30,9 @@ export async function getTrainerContext() {
 export function enrichAssignedBatches(batchIds) {
   return batchIds
     .map((batchId) => {
-      const batch = getBatchById(batchId);
+      const batch = getBatch(batchId);
       if (!batch) return null;
-      const course = getCourseBySlug(batch.courseSlug);
+      const course = getCourse(batch.courseSlug);
       if (!course) return null;
       return { batch, course };
     })

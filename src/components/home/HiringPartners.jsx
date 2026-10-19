@@ -1,6 +1,6 @@
 import { Section } from "@/components/shared/Section";
 import { Reveal } from "@/components/shared/Reveal";
-import { courses } from "@/data/courses";
+import { listCourses } from "@/lib/catalog";
 import { cn } from "@/lib/utils";
 
 // No verified hiring partnerships exist yet, so this section shows the
@@ -9,7 +9,6 @@ import { cn } from "@/lib/utils";
 //
 // Every technology listed on any course is shown. New ones appear
 // automatically (as "Other") until they are added to CATEGORY_OF below.
-const technologies = [...new Set(courses.flatMap((course) => course.technologies))];
 
 const CATEGORIES = {
   frontend: { label: "Frontend", tile: "from-sky-500 to-primary", dot: "bg-sky-500" },
@@ -50,12 +49,8 @@ const CATEGORY_OF = {
   Git: "cloud",
 };
 
-const items = technologies.map((name) => ({ name, category: CATEGORY_OF[name] ?? "other" }));
-const usedCategories = Object.keys(CATEGORIES).filter((key) => items.some((item) => item.category === key));
-
 // Spread the list across rows round-robin so every row mixes the whole stack.
 const ROWS = 3;
-const rows = Array.from({ length: ROWS }, (_, row) => items.filter((_, index) => index % ROWS === row));
 
 const monogram = (name) => {
   const clean = name.replace(/[^A-Za-z0-9+#]/g, " ").trim();
@@ -106,6 +101,11 @@ function MarqueeRow({ row, reverse }) {
 }
 
 export function HiringPartners() {
+  const courses = listCourses({ publishedOnly: true });
+  const technologies = [...new Set(courses.flatMap((course) => course.technologies))];
+  const items = technologies.map((name) => ({ name, category: CATEGORY_OF[name] ?? "other" }));
+  const usedCategories = Object.keys(CATEGORIES).filter((key) => items.some((item) => item.category === key));
+  const rows = Array.from({ length: ROWS }, (_, row) => items.filter((_, index) => index % ROWS === row));
   return (
     <Section className="relative overflow-clip bg-gradient-to-b from-white via-blue-50/60 to-white" containerClassName="relative">
       <div aria-hidden="true" className="animate-drift pointer-events-none absolute -left-24 top-1/3 h-80 w-80 rounded-full bg-primary/15 blur-3xl" />

@@ -14,12 +14,12 @@ import {
   countAssignmentsForTrainer,
 } from "@/lib/db/adminQueries";
 import { createUser, findUserByEmailInternal } from "@/lib/db/users";
-import { createTrainerBatchAssignment, isBatchAssignedToTrainer } from "@/lib/db/trainerBatchAssignments";
+import { isBatchAssignedToTrainer } from "@/lib/db/trainerBatchAssignments";
 import { countActiveBatchEnrollmentsForBatchIds, listEnrolledStudentsForBatchIds } from "@/lib/db/batchEnrollments";
 import { listSessionsForBatchIds } from "@/lib/db/classSessions";
 import { hashPassword } from "@/lib/auth/password";
-import { batches as batchCatalog, getBatchById } from "@/data/batches";
-import { getCourseBySlug } from "@/data/courses";
+import { listBatches, getBatch, getCourse } from "@/lib/catalog";
+import { assignTrainer } from "@/lib/db/catalog";
 
 const EMPTY_PAGE = { rows: [], page: 1, totalPages: 1, pageSize: PAGE_SIZE, total: 0 };
 
@@ -31,7 +31,7 @@ export async function getTrainersPage({ q, sort, page }) {
 }
 
 function describeBatch(batch) {
-  const course = getCourseBySlug(batch.courseSlug);
+  const course = getCourse(batch.courseSlug);
   return { batch, course, label: `${course?.title ?? batch.courseSlug} — ${batch.mode} (${batch.startDate})` };
 }
 
@@ -44,7 +44,7 @@ export async function getTrainerDetailForAdmin(userId) {
   const rows = listTrainerBatchRows(user.id);
   const batchIds = rows.map((r) => r.batchId);
   const assigned = rows.map((r) => {
-    const batch = getBatchById(r.batchId);
+    const batch = getBatch(r.batchId);
     // A stored assignment whose batch has left the catalog is still shown
     // (by id) rather than silently hidden, so an admin can see it.
     return { batchId: r.batchId, assignedAt: r.assignedAt, ...(batch ? describeBatch(batch) : { batch: null, course: null, label: r.batchId }) };
@@ -52,7 +52,8 @@ export async function getTrainerDetailForAdmin(userId) {
   const counts = countActiveBatchEnrollmentsForBatchIds(batchIds);
   for (const a of assigned) a.studentCount = counts[a.batchId] || 0;
 
-  const assignable = batchCatalog.filter((b) => !batchIds.includes(b.id)).map((b) => ({ id: b.id, label: describeBatch(b).label }));
+  const assignable = listBatches()
+    .filter((b) => b.status !== "Archived" && !batchIds.includes(b.id)).map((b) => ({ id: b.id, label: describeBatch(b).label }));
 
   return {
     user,
@@ -97,11 +98,12 @@ export async function assignTrainerToBatch(trainerUserId, batchId) {
   const trainer = getUserRow(trainerUserId);
   if (!trainer || trainer.role !== "TRAINER") return { ok: false, reason: "trainer_not_found" };
 
-  const batch = getBatchById(batchId);
-  if (!batch || !getCourseBySlug(batch.courseSlug)) return { ok: false, reason: "batch_not_found" };
+  const batch = getBatch(batchId);
+  if (!batch || !getCourse(batch.courseSlug)) return { ok: false, reason: "batch_not_found" };
+  if (batch.status === "Archived") return { ok: false, reason: "batch_not_found" };
 
   if (isBatchAssignedToTrainer(trainer.id, batch.id)) return { ok: false, reason: "already_assigned" };
 
-  createTrainerBatchAssignment(trainer.id, batch.id);
+  assignTrainer(ctx.user.id, trainer.id, batch.id);
   return { ok: true, trainerId: trainer.id, batchId: batch.id };
 }

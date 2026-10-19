@@ -12,7 +12,7 @@ import { Select } from "@/components/ui/Select";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { courses } from "@/data/courses";
+import { listCourses } from "@/lib/catalog";
 import { formatDbDate } from "@/lib/utils";
 
 export const metadata = {
@@ -73,7 +73,7 @@ export default async function AdminCertificatesPage({ searchParams }) {
             </Select>
             <Select label="Course" id="course" name="course" defaultValue={params.course}>
               <option value="">All courses</option>
-              {courses.map((c) => (
+              {listCourses().map((c) => (
                 <option key={c.slug} value={c.slug}>
                   {c.title}
                 </option>

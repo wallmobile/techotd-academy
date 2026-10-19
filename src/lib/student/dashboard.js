@@ -2,8 +2,7 @@ import { getCurrentUser } from "@/lib/auth/currentUser";
 import { getOrCreateStudentProfile } from "@/lib/db/studentProfiles";
 import { listCourseEnrollmentsForStudent } from "@/lib/db/courseEnrollments";
 import { listBatchEnrollmentsForStudent } from "@/lib/db/batchEnrollments";
-import { getCourseBySlug } from "@/data/courses";
-import { getBatchById } from "@/data/batches";
+import { getBatch, getCourse } from "@/lib/catalog";
 import { computeCourseProgress, getMostRecentlyAccessedProgress } from "@/lib/student/progress";
 import { listSessionsForBatchIds } from "@/lib/db/classSessions";
 
@@ -22,17 +21,17 @@ export async function getStudentDashboardData() {
   const profile = getOrCreateStudentProfile(user.id);
 
   const courseEnrollments = listCourseEnrollmentsForStudent(profile.id)
-    .map((enrollment) => ({ ...enrollment, course: getCourseBySlug(enrollment.courseSlug) }))
+    .map((enrollment) => ({ ...enrollment, course: getCourse(enrollment.courseSlug) }))
     // An enrollment whose course slug no longer exists in the catalog is
     // dropped rather than shown with missing/undefined course details.
     .filter((enrollment) => Boolean(enrollment.course));
 
   const batchEnrollments = listBatchEnrollmentsForStudent(profile.id)
-    .map((enrollment) => ({ ...enrollment, batch: getBatchById(enrollment.batchId) }))
+    .map((enrollment) => ({ ...enrollment, batch: getBatch(enrollment.batchId) }))
     .filter((enrollment) => Boolean(enrollment.batch))
     .map((enrollment) => ({
       ...enrollment,
-      course: getCourseBySlug(enrollment.batch.courseSlug),
+      course: getCourse(enrollment.batch.courseSlug),
     }));
 
   // Real per-lesson progress (Phase 8.4), calculated from lesson_progress
@@ -86,7 +85,7 @@ export async function getStudentDashboardData() {
       (a, b) =>
         new Date(`${a.sessionDate}T${a.startTime}:00`) - new Date(`${b.sessionDate}T${b.startTime}:00`)
     )
-    .map((s) => ({ ...s, batch: getBatchById(s.batchId), course: getCourseBySlug(getBatchById(s.batchId).courseSlug) }))[0] || null;
+    .map((s) => ({ ...s, batch: getBatch(s.batchId), course: getCourse(getBatch(s.batchId).courseSlug) }))[0] || null;
 
   return {
     user,

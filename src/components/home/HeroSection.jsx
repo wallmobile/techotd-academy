@@ -3,17 +3,20 @@ import { Section } from "@/components/shared/Section";
 import { Reveal } from "@/components/shared/Reveal";
 import { Button } from "@/components/ui/Button";
 import { fadeIn } from "@/lib/motion";
-import { courses } from "@/data/courses";
+import { listCourses } from "@/lib/catalog";
 import { categories } from "@/data/categories";
 
-// Trust strip — every figure is derived from the real catalog, never invented.
-const projectCount = courses.reduce((sum, course) => sum + (course.projects?.length ?? 0), 0);
-const stats = [
-  { value: courses.length, label: "Courses" },
-  { value: categories.length, label: "Learning Paths" },
-  { value: projectCount, label: "Hands-on Projects" },
-  { value: 3, label: "Learning Modes" },
-];
+// Trust strip — every figure is derived from the real (published) catalog, never invented.
+function getStats() {
+  const courses = listCourses({ publishedOnly: true });
+  const projectCount = courses.reduce((sum, course) => sum + (course.projects?.length ?? 0), 0);
+  return [
+    { value: courses.length, label: "Courses" },
+    { value: categories.length, label: "Learning Paths" },
+    { value: projectCount, label: "Hands-on Projects" },
+    { value: 3, label: "Learning Modes" },
+  ];
+}
 
 const features = [
   {
@@ -66,6 +69,7 @@ const gridStyle = {
 };
 
 export function HeroSection() {
+  const stats = getStats();
   return (
     <div className="relative isolate overflow-hidden bg-gradient-to-b from-surface via-white to-white">
       {/* Decorative background: fading grid lines + soft colour glows. */}

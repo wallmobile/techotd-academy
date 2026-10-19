@@ -856,6 +856,47 @@ feedback, trainer/admin AI tools, and streaming responses.
   Requirements) but was **NOT VERIFIED** on an actual Windows machine —
   this project was built and tested in a Linux sandbox.
 
+## Phase 10.11 — Courses & Batches Management
+
+**Routes** (ADMIN / SUPER_ADMIN only, `noindex`; enforced per page and per action on the server):
+`/admin/courses` (list with search, category/level/status filters, sort, 20 per page), `/admin/courses/new`,
+`/admin/courses/[course-slug]` (details, edit, publish/unpublish, its batches, change history),
+`/admin/batches` (search, course/status/mode filters, sort, pagination), `/admin/batches/new`,
+`/admin/batches/[batch-id]` (details, edit, status, trainers, enrollments, change history).
+
+**How it fits the existing data model.** Courses and batches have always been defined in code
+(`src/data/courses.js`, `batches.js`) and every other table references them by slug / id string, so
+nothing was renamed or moved. Two additive tables overlay that catalog: `catalog_courses` and
+`catalog_batches`. A `BASE` row stores admin edits to a code-defined record (a NULL column keeps the code
+value); a `CUSTOM` row is a course/batch created in the admin panel. `src/lib/catalog.js` merges the two on
+every read (no cache, so it can't go stale), and every consumer — public site, student and trainer areas,
+enrollment, fees, certificates, CRM, AI — reads through it. Client components receive catalog data as props.
+The public pages are rendered per request (`force-dynamic`) so a course created in production appears
+immediately instead of being frozen at build time.
+
+**Rules**
+- Nothing is ever deleted. A course is **unpublished**: it leaves the public catalog, course page (404), sitemap,
+  enquiry forms, recommendations and new enrollments, but existing enrollments, fees, certificates and the
+  student's own view keep resolving it. A batch is moved to **Closed / Completed / Archived**; only
+  Open/Upcoming batches of published courses are public and enrollable. Archiving is refused while any
+  enrollment in the batch is ACTIVE.
+- A course's URL name (slug) and a batch's course are fixed at creation (enrollments, fees and certificates refer
+  to them). Batch ids are generated (`<course-slug>-NN`). A batch's mode must be one the course offers; end date
+  cannot precede the start date; a same course + mode + start date + schedule batch is refused as a duplicate.
+- Trainer assignment uses the existing `trainer_batch_assignments` table: only ACTIVE `TRAINER` users, duplicates
+  reported, removal asks for confirmation and keeps class / attendance / assignment records.
+- Every create / edit / status / trainer change writes an `audit_log` row (who, what, when; never field contents)
+  shown as "Change history". Destructive-ish actions (unpublish, close/complete/archive, remove trainer) require a
+  confirmation dialog.
+- Editable course fields: title, summary, description, category, level, duration + band, modes, technologies,
+  prerequisites, outcomes. Syllabus modules, projects and FAQs remain content files and are not edited here.
+
+**Deliberately not added:** course *fees* (fees are assigned per enrollment; no prices are invented) and batch
+*seat capacity* (not in the schema; adding it needs its own concurrency-safe design).
+
+**Migration.** Purely additive (`CREATE TABLE IF NOT EXISTS`); tested against a copy of the existing development
+database (no rows lost, integrity OK, idempotent). `npm run backup` includes the new tables.
+
 ## Deployment Prerequisites & Verification (Phase 10.10)
 
 **Required in production**

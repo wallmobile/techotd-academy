@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/Button";
 import { Breadcrumbs } from "@/components/shared/Breadcrumbs";
 import { CheckIcon, DotGrid, GlowBackdrop } from "@/components/training/icons";
 import { isBuiltRoute } from "@/constants/navigation";
-import { batches } from "@/data/batches";
+import { listBatches } from "@/lib/catalog";
 import { cn } from "@/lib/utils";
 
 const svg = {
@@ -68,7 +68,7 @@ export function CourseDetailHero({ course }) {
     (total, module) => total + module.items.filter((item) => item.type === "lesson").length,
     0
   );
-  const nextBatch = batches.find((batch) => batch.courseSlug === course.slug);
+  const nextBatch = listBatches({ publicOnly: true, courseSlug: course.slug })[0];
   const start = nextBatch ? parseStart(nextBatch.startsOn) : null;
   const duration = displayDuration(course);
   const stats = [

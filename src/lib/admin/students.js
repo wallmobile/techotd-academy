@@ -12,8 +12,7 @@ import { listBatchEnrollmentsForStudent } from "@/lib/db/batchEnrollments";
 import { listAttendanceForStudent } from "@/lib/db/attendanceRecords";
 import { listCertificatesForStudent } from "@/lib/db/certificates";
 import { computeCourseProgress } from "@/lib/student/progress";
-import { getCourseBySlug } from "@/data/courses";
-import { getBatchById } from "@/data/batches";
+import { getBatch, getCourse } from "@/lib/catalog";
 
 const EMPTY_PAGE = { rows: [], page: 1, totalPages: 1, pageSize: PAGE_SIZE, total: 0 };
 
@@ -38,7 +37,7 @@ export async function getStudentDetailForAdmin(userId) {
   }
 
   const courses = listCourseEnrollmentsForStudent(profile.id).map((enrollment) => {
-    const course = getCourseBySlug(enrollment.courseSlug);
+    const course = getCourse(enrollment.courseSlug);
     return {
       id: enrollment.id,
       status: enrollment.status,
@@ -49,8 +48,8 @@ export async function getStudentDetailForAdmin(userId) {
   });
 
   const batches = listBatchEnrollmentsForStudent(profile.id).map((enrollment) => {
-    const batch = getBatchById(enrollment.batchId);
-    const course = batch ? getCourseBySlug(batch.courseSlug) : null;
+    const batch = getBatch(enrollment.batchId);
+    const course = batch ? getCourse(batch.courseSlug) : null;
     return {
       id: enrollment.id,
       status: enrollment.status,
@@ -70,7 +69,7 @@ export async function getStudentDetailForAdmin(userId) {
     id: c.id,
     certificateNumber: c.certificateNumber,
     status: c.status,
-    courseTitle: getCourseBySlug(c.courseSlug)?.title ?? c.courseSlug,
+    courseTitle: getCourse(c.courseSlug)?.title ?? c.courseSlug,
   }));
 
   return { ...base, courses, batches, attendance, submissions: listSubmissionsForStudent(profile.id), certificates };

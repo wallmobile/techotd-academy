@@ -1,5 +1,5 @@
 import { BatchExplorer } from "@/components/batches/BatchExplorer";
-import { batches } from "@/data/batches";
+import { listBatches, listCourses } from "@/lib/catalog";
 
 export const metadata = {
   title: "Upcoming Batches",
@@ -8,5 +8,5 @@ export const metadata = {
 };
 
 export default function BatchesPage() {
-  return <BatchExplorer batches={batches} />;
+  return <BatchExplorer batches={listBatches({ publicOnly: true })} courses={listCourses({ publishedOnly: true }).map((c) => ({ slug: c.slug, title: c.title, category: c.category, levelLabel: c.levelLabel, duration: c.duration }))} />;
 }

@@ -7,8 +7,7 @@ import { getCurrentUser } from "@/lib/auth/currentUser";
 import { getOrCreateStudentProfile } from "@/lib/db/studentProfiles";
 import { listBatchEnrollmentsForStudent } from "@/lib/db/batchEnrollments";
 import { listSessionsForBatchIds } from "@/lib/db/classSessions";
-import { getCourseBySlug } from "@/data/courses";
-import { getBatchById } from "@/data/batches";
+import { getBatch, getCourse } from "@/lib/catalog";
 
 function sessionDateTime(session) {
   return new Date(`${session.sessionDate}T${session.startTime}:00`);
@@ -28,9 +27,9 @@ export async function getMyBatchEnrollments() {
   return listBatchEnrollmentsForStudent(profile.id)
     .filter((enrollment) => enrollment.status !== "CANCELLED")
     .map((enrollment) => {
-      const batch = getBatchById(enrollment.batchId);
+      const batch = getBatch(enrollment.batchId);
       if (!batch) return { ...enrollment, batch: null, course: null };
-      return { ...enrollment, batch, course: getCourseBySlug(batch.courseSlug) };
+      return { ...enrollment, batch, course: getCourse(batch.courseSlug) };
     })
     .filter((enrollment) => Boolean(enrollment.batch));
 }
@@ -54,9 +53,9 @@ export async function getMySchedule() {
 
   const sessions = listSessionsForBatchIds(batchIds)
     .map((session) => {
-      const batch = getBatchById(session.batchId);
+      const batch = getBatch(session.batchId);
       if (!batch) return null;
-      return { ...session, batch, course: getCourseBySlug(batch.courseSlug) };
+      return { ...session, batch, course: getCourse(batch.courseSlug) };
     })
     .filter(Boolean);
 

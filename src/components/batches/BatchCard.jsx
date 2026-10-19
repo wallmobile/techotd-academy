@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/Button";
 import { ArrowLink } from "@/components/shared/ArrowLink";
-import { getCourseBySlug, displayDuration } from "@/data/courses";
+import { displayDuration } from "@/data/courses";
 import { cn } from "@/lib/utils";
 
 const svgProps = {
@@ -103,7 +103,8 @@ function Tile({ label, value, onGradient }) {
 }
 
 export function BatchCard({ batch, delay = 0, spotlight = false }) {
-  const course = getCourseBySlug(batch.courseSlug);
+  // The course is attached by the caller (BatchExplorer / pages).
+  const course = batch.course;
 
   // If the referenced course is missing, skip rendering rather than
   // showing a batch with broken/undefined course information.

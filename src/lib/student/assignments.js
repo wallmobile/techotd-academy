@@ -10,7 +10,7 @@ import { listCourseEnrollmentsForStudent } from "@/lib/db/courseEnrollments";
 import { listBatchEnrollmentsForStudent } from "@/lib/db/batchEnrollments";
 import { listVisibleAssignmentsForCourseSlugs, getVisibleAssignmentById } from "@/lib/db/assignments";
 import { getSubmissionForStudentAssignment } from "@/lib/db/assignmentSubmissions";
-import { getCourseBySlug } from "@/data/courses";
+import { getCourse } from "@/lib/catalog";
 import { getCourseCurriculum } from "@/lib/student/curriculum";
 
 async function getEnrollmentContext() {
@@ -58,7 +58,7 @@ export async function getMyAssignments() {
 
   return assignments.map((assignment) => ({
     ...assignment,
-    course: getCourseBySlug(assignment.courseSlug),
+    course: getCourse(assignment.courseSlug),
     submission: getSubmissionForStudentAssignment(ctx.profile.id, assignment.id),
   }));
 }
@@ -76,7 +76,7 @@ export async function getAssignmentDetailForStudent(assignmentId) {
   if (!assignment) return null;
   if (!isAssignmentVisibleTo(assignment, ctx)) return null;
 
-  const course = getCourseBySlug(assignment.courseSlug);
+  const course = getCourse(assignment.courseSlug);
   if (!course) return null;
 
   const submission = getSubmissionForStudentAssignment(ctx.profile.id, assignment.id);
@@ -96,7 +96,7 @@ export async function getMyCourseProjects() {
 
   const projects = [];
   for (const courseSlug of ctx.courseSlugs) {
-    const course = getCourseBySlug(courseSlug);
+    const course = getCourse(courseSlug);
     if (!course) continue;
     const curriculum = getCourseCurriculum(course);
     for (const lesson of curriculum.flatLessons) {

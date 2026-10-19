@@ -12,8 +12,7 @@ import {
   updateAssignment,
 } from "@/lib/db/assignments";
 import { countPendingSubmissionsForAssignmentInBatches } from "@/lib/db/assignmentSubmissions";
-import { getCourseBySlug } from "@/data/courses";
-import { getBatchById } from "@/data/batches";
+import { getBatch, getCourse } from "@/lib/catalog";
 
 export async function getManagedCourseContext() {
   const ctx = await getTrainerContext();
@@ -73,8 +72,8 @@ export async function getMyManagedAssignments() {
 
   return assignments.map((assignment) => ({
     ...assignment,
-    course: getCourseBySlug(assignment.courseSlug),
-    batch: assignment.batchId ? getBatchById(assignment.batchId) : null,
+    course: getCourse(assignment.courseSlug),
+    batch: assignment.batchId ? getBatch(assignment.batchId) : null,
     pendingReviewCount: countPendingSubmissionsForAssignmentInBatches(assignment.id, getReviewBatchIds(assignment, ctx)),
   }));
 }
@@ -90,9 +89,9 @@ export async function getAssignmentDetailForTrainer(assignmentId) {
   if (!assignment) return null;
   if (!isManagedByTrainer(assignment, ctx)) return null;
 
-  const course = getCourseBySlug(assignment.courseSlug);
+  const course = getCourse(assignment.courseSlug);
   if (!course) return null;
-  const batch = assignment.batchId ? getBatchById(assignment.batchId) : null;
+  const batch = assignment.batchId ? getBatch(assignment.batchId) : null;
 
   return { assignment, course, batch, reviewBatchIds: getReviewBatchIds(assignment, ctx) };
 }

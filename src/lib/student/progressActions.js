@@ -14,7 +14,7 @@
 import { getCurrentUser } from "@/lib/auth/currentUser";
 import { getOrCreateStudentProfile } from "@/lib/db/studentProfiles";
 import { listCourseEnrollmentsForStudent } from "@/lib/db/courseEnrollments";
-import { getCourseBySlug } from "@/data/courses";
+import { getCourse } from "@/lib/catalog";
 import { getCourseCurriculum, getLessonById } from "@/lib/student/curriculum";
 import { recordLessonAccess, markLessonComplete } from "@/lib/db/lessonProgress";
 import { computeCourseProgress } from "@/lib/student/progress";
@@ -34,7 +34,7 @@ async function authorizeLessonMutation(courseSlug, lessonId) {
   const user = await getCurrentUser();
   if (!user || user.role !== "STUDENT") return null;
 
-  const course = getCourseBySlug(courseSlug);
+  const course = getCourse(courseSlug);
   if (!course) return null;
 
   const profile = getOrCreateStudentProfile(user.id);

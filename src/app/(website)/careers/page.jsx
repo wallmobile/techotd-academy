@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { Reveal, RevealItem } from "@/components/shared/Reveal";
 import { CheckIcon, GlowBackdrop, Gradient } from "@/components/training/icons";
 import { careerSupportItems } from "@/data/careerSupport";
-import { courses } from "@/data/courses";
+import { listCourses } from "@/lib/catalog";
 import { CareerPlanner } from "@/components/careers/CareerPlanner";
 import { displayDuration } from "@/data/courses";
 import { staggerContainer } from "@/lib/motion";
@@ -105,6 +105,7 @@ function CareerAside() {
 }
 
 export default function CareersPage() {
+  const courses = listCourses({ publishedOnly: true });
   const plans = courses.map((course) => ({
     slug: course.slug,
     title: course.title,

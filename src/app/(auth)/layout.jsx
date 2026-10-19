@@ -10,6 +10,10 @@ export const metadata = {
   },
 };
 
+// The catalog (courses, batches) is database-backed and admin-editable, so these
+// pages must be rendered per request rather than frozen at build time.
+export const dynamic = "force-dynamic";
+
 export default function AuthLayout({ children }) {
   return children;
 }

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Reveal, RevealItem } from "@/components/shared/Reveal";
 import { GlowBackdrop, Gradient } from "@/components/training/icons";
 import { contact } from "@/constants/contact";
-import { courses } from "@/data/courses";
+import { listCourses } from "@/lib/catalog";
 import { trainers } from "@/data/trainers";
 import { trainingModes } from "@/data/trainingModes";
 import { FaqAccordion } from "@/components/shared/FaqAccordion";
@@ -124,7 +124,7 @@ export default function AboutPage() {
         description="TechOTD Academy is a career-focused training institute in Noida offering practical, industry-ready programs guided by expert mentors — in live online, classroom and hybrid formats."
         aside={<PillarCard />}
         stats={[
-          { value: courses.length, label: "Courses" },
+          { value: listCourses({ publishedOnly: true }).length, label: "Courses" },
           { value: trainers.length, label: "Mentors" },
           { value: trainingModes.length, label: "Training modes" },
         ]}

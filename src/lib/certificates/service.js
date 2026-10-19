@@ -31,8 +31,7 @@ import {
 } from "@/lib/db/certificates";
 import { computeCourseProgress } from "@/lib/student/progress";
 import { buildCertificatePdf } from "@/lib/certificates/pdf";
-import { getBatchById } from "@/data/batches";
-import { getCourseBySlug } from "@/data/courses";
+import { getBatch, getCourse } from "@/lib/catalog";
 import { notifyCertificateIssued, notifyCertificateRevoked } from "@/lib/notifications/events";
 import { CERTIFICATES_PAGE_SIZE, APPROVAL_NOTE_MIN, NOTE_MAX_LENGTH } from "@/constants/certificates";
 
@@ -62,8 +61,8 @@ export function verificationUrl(token) {
 }
 
 function courseOf(enrollment) {
-  const batch = getBatchById(enrollment.batchId);
-  const course = batch ? getCourseBySlug(batch.courseSlug) : null;
+  const batch = getBatch(enrollment.batchId);
+  const course = batch ? getCourse(batch.courseSlug) : null;
   return { batch, course };
 }
 
@@ -136,9 +135,9 @@ export async function getCertificateFormData({ enrollmentId, query }) {
     eligibility: usable,
     candidates: usable
       ? []
-      : searchEnrollmentsForCertificate(query || "", (batchId) => getBatchById(batchId)?.courseSlug ?? null).map((c) => {
-          const batch = getBatchById(c.batchId);
-          return { ...c, courseTitle: batch ? getCourseBySlug(batch.courseSlug)?.title ?? batch.courseSlug : c.batchId };
+      : searchEnrollmentsForCertificate(query || "", (batchId) => getBatch(batchId)?.courseSlug ?? null).map((c) => {
+          const batch = getBatch(c.batchId);
+          return { ...c, courseTitle: batch ? getCourse(batch.courseSlug)?.title ?? batch.courseSlug : c.batchId };
         }),
   };
 }
@@ -192,14 +191,14 @@ export async function revokeCertificate({ certificateId, reason }) {
     await notifyCertificateRevoked({
       userId: before.studentUserId,
       certificateId,
-      courseTitle: getCourseBySlug(before.courseSlug)?.title ?? before.courseSlug,
+      courseTitle: getCourse(before.courseSlug)?.title ?? before.courseSlug,
     });
   }
   return { ok: true, certificateId };
 }
 
 function describe(cert) {
-  return { ...cert, courseTitle: getCourseBySlug(cert.courseSlug)?.title ?? cert.courseSlug };
+  return { ...cert, courseTitle: getCourse(cert.courseSlug)?.title ?? cert.courseSlug };
 }
 
 export async function getCertificatesPage({ q, status, course, sort, page }) {
@@ -231,7 +230,7 @@ export async function getCertificateSummary() {
 export function renderCertificatePdf(cert) {
   if (!cert) return { ok: false, reason: "not_found" };
   if (cert.status !== "ACTIVE") return { ok: false, reason: "revoked" };
-  const course = getCourseBySlug(cert.courseSlug);
+  const course = getCourse(cert.courseSlug);
   const pdf = buildCertificatePdf({
     studentName: cert.studentName,
     courseTitle: course?.title ?? cert.courseSlug,

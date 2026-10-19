@@ -5,7 +5,6 @@ import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Button } from "@/components/ui/Button";
 import { EnquirySuccess } from "@/components/enquiry/EnquirySuccess";
-import { courses } from "@/data/courses";
 import { submitEnquiry } from "@/lib/enquiry";
 import { validateEnquiryForm } from "@/lib/validateEnquiry";
 
@@ -61,7 +60,9 @@ function BookIcon() {
  * submission path. Submissions are stored as leads (source ENQUIRY,
  * origin "homepage"); the success state still promises nothing beyond receipt.
  */
-export function HeroEnquiryForm() {
+// `courses` is a slim [{ slug, title }] list supplied by the server parent (the
+// catalog is database-backed and can't be imported into a client component).
+export function HeroEnquiryForm({ courses = [] }) {
   const [values, setValues] = useState(EMPTY_VALUES);
   const [errors, setErrors] = useState({});
   const [status, setStatus] = useState("idle"); // idle | submitting | success

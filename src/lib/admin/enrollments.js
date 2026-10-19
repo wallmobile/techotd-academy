@@ -16,8 +16,7 @@ import {
   setEnrollmentStatusTx,
 } from "@/lib/db/enrollments";
 import { ENROLLMENT_STATUSES, ENROLLABLE_BATCH_STATUSES, ENROLLMENTS_PAGE_SIZE } from "@/constants/enrollment";
-import { courses, getCourseBySlug } from "@/data/courses";
-import { batches, getBatchById } from "@/data/batches";
+import { listCourses, getCourse, listBatches, getBatch } from "@/lib/catalog";
 import { notifyEnrolled, notifyEnrollmentStatus } from "@/lib/notifications/events";
 
 const FORBIDDEN = { ok: false, reason: "forbidden", message: "You don't have permission to do that." };
@@ -27,6 +26,7 @@ export const ENROLLMENT_MESSAGES = {
   student_invalid: "Please choose a valid student.",
   student_inactive: "This student's account is not active.",
   course_invalid: "Please choose a valid course.",
+  course_unpublished: "This course is not published, so it can't take new enrollments.",
   batch_invalid: "Please choose a valid batch.",
   batch_mismatch: "That batch does not belong to the selected course.",
   batch_closed: "This batch is not open for enrollment.",
@@ -39,12 +39,12 @@ export const ENROLLMENT_MESSAGES = {
 const fail = (reason) => ({ ok: false, reason, message: ENROLLMENT_MESSAGES[reason] });
 
 function courseBatchIds(courseSlug) {
-  return batches.filter((b) => b.courseSlug === courseSlug).map((b) => b.id);
+  return listBatches({ courseSlug }).map((b) => b.id);
 }
 
 function describe(enrollment) {
-  const batch = getBatchById(enrollment.batchId);
-  const course = batch ? getCourseBySlug(batch.courseSlug) : null;
+  const batch = getBatch(enrollment.batchId);
+  const course = batch ? getCourse(batch.courseSlug) : null;
   return {
     ...enrollment,
     courseSlug: batch?.courseSlug ?? null,
@@ -89,15 +89,15 @@ export async function getEnrollmentCounts() {
 }
 
 export function getBatchFilterOptions() {
-  return batches.map((b) => ({
+  return listBatches().map((b) => ({
     value: b.id,
     courseSlug: b.courseSlug,
-    label: `${getCourseBySlug(b.courseSlug)?.title ?? b.courseSlug} — ${b.mode} (${b.startDate})`,
+    label: `${getCourse(b.courseSlug)?.title ?? b.courseSlug} — ${b.mode} (${b.startDate})`,
   }));
 }
 
 export function getCourseFilterOptions() {
-  return courses.map((c) => ({ value: c.slug, label: c.title }));
+  return listCourses().map((c) => ({ value: c.slug, label: c.title }));
 }
 
 // Data for /admin/enrollments/new. `studentId`/`course`/`batch` come from
@@ -109,15 +109,16 @@ export async function getEnrollmentFormData({ studentId, studentQuery, course, b
   const student = studentId ? getUserForEnrollment(studentId) : null;
   const validStudent = student && student.role === "STUDENT" && student.status === "ACTIVE" ? student : null;
 
-  const courseOk = course && getCourseBySlug(course) ? course : "";
-  const batchRow = batch ? getBatchById(batch) : null;
+  const courseOk = course && getCourse(course, { publishedOnly: true }) ? course : "";
+  const batchRow = batch ? getBatch(batch) : null;
   const batchOk = batchRow && (!courseOk || batchRow.courseSlug === courseOk) ? batchRow : null;
 
   return {
     student: validStudent ? { id: validStudent.id, name: validStudent.name, email: validStudent.email } : null,
     candidates: validStudent ? [] : searchActiveStudents(studentQuery || ""),
-    courses: getCourseFilterOptions(),
-    batches: batches
+    // New enrollments only: published courses, open/upcoming batches.
+    courses: listCourses({ publishedOnly: true }).map((c) => ({ value: c.slug, label: c.title })),
+    batches: listBatches({ publicOnly: true })
       .filter((b) => ENROLLABLE_BATCH_STATUSES.includes(b.status))
       .map((b) => ({
         value: b.id,
@@ -138,8 +139,9 @@ export async function createEnrollment({ studentUserId, courseSlug, batchId }) {
   if (!student || student.role !== "STUDENT") return fail("student_invalid");
   if (student.status !== "ACTIVE") return fail("student_inactive");
 
-  if (typeof courseSlug !== "string" || !getCourseBySlug(courseSlug)) return fail("course_invalid");
-  const batch = typeof batchId === "string" ? getBatchById(batchId) : null;
+  if (typeof courseSlug !== "string" || !getCourse(courseSlug)) return fail("course_invalid");
+  if (!getCourse(courseSlug, { publishedOnly: true })) return fail("course_unpublished");
+  const batch = typeof batchId === "string" ? getBatch(batchId) : null;
   if (!batch) return fail("batch_invalid");
   if (batch.courseSlug !== courseSlug) return fail("batch_mismatch");
   if (!ENROLLABLE_BATCH_STATUSES.includes(batch.status)) return fail("batch_closed");
@@ -156,7 +158,7 @@ export async function createEnrollment({ studentUserId, courseSlug, batchId }) {
   await notifyEnrolled({
     userId: student.id,
     enrollmentId: result.enrollmentId,
-    courseTitle: getCourseBySlug(courseSlug)?.title ?? courseSlug,
+    courseTitle: getCourse(courseSlug)?.title ?? courseSlug,
     stamp,
   });
   return { ok: true, enrollmentId: result.enrollmentId, studentUserId: student.id };
@@ -170,7 +172,7 @@ export async function setEnrollmentStatus(enrollmentId, status) {
 
   const enrollment = getEnrollmentById(enrollmentId);
   if (!enrollment) return fail("not_found");
-  const batch = getBatchById(enrollment.batchId);
+  const batch = getBatch(enrollment.batchId);
   if (!batch) return fail("batch_invalid");
   if (status === "ACTIVE" && enrollment.status !== "ACTIVE" && !ENROLLABLE_BATCH_STATUSES.includes(batch.status)) {
     return fail("batch_closed");
@@ -188,7 +190,7 @@ export async function setEnrollmentStatus(enrollmentId, status) {
       userId: enrollment.studentUserId,
       enrollmentId: enrollment.id,
       status,
-      courseTitle: getCourseBySlug(batch.courseSlug)?.title ?? batch.courseSlug,
+      courseTitle: getCourse(batch.courseSlug)?.title ?? batch.courseSlug,
       stamp: getEnrollmentById(enrollment.id)?.updatedAt ?? "",
     });
   }

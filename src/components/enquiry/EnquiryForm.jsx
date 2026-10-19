@@ -6,9 +6,7 @@ import { Select } from "@/components/ui/Select";
 import { Textarea } from "@/components/ui/Textarea";
 import { Button } from "@/components/ui/Button";
 import { EnquirySuccess } from "@/components/enquiry/EnquirySuccess";
-import { courses } from "@/data/courses";
 import { trainingModes } from "@/data/trainingModes";
-import { batches } from "@/data/batches";
 import { LEVELS } from "@/data/courseFilters";
 import { submitEnquiry, normalizeSource } from "@/lib/enquiry";
 import { validateEnquiryForm, MESSAGE_MAX_LENGTH } from "@/lib/validateEnquiry";
@@ -103,7 +101,9 @@ const rise = (index) => ({
  * Shared form for /book-demo and /enquiry. `variant` decides which
  * optional fields render; both call the same submitEnquiry() boundary, which now persists a lead.
  */
-export function EnquiryForm({ variant, initialCourse, initialMode, initialBatch, source }) {
+// `courses` ([{ slug, title }]) and `batches` (public ones) come from the server
+// page: the catalog is database-backed and can't be imported into a client component.
+export function EnquiryForm({ variant, initialCourse, initialMode, initialBatch, source, courses = [], batches = [] }) {
   const [values, setValues] = useState({
     ...EMPTY_VALUES,
     course: initialCourse || "",
@@ -116,7 +116,7 @@ export function EnquiryForm({ variant, initialCourse, initialMode, initialBatch,
 
   const availableBatches = useMemo(
     () => (values.course ? batches.filter((batch) => batch.courseSlug === values.course) : batches),
-    [values.course]
+    [values.course, batches]
   );
 
   // Progress meter over the required fields only.

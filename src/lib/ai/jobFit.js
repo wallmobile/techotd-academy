@@ -9,7 +9,7 @@
 import { getJobForStudent } from "@/lib/student/jobs";
 import { getAiStudent } from "@/lib/ai/guard";
 import { listCourseEnrollmentsForStudent } from "@/lib/db/courseEnrollments";
-import { courses, getCourseBySlug } from "@/data/courses";
+import { listCourses, getCourse } from "@/lib/catalog";
 import { parseSkillList, skillKey } from "@/lib/ai/skills";
 
 export const JOB_FIT_CAVEAT =
@@ -31,7 +31,7 @@ export async function getJobFit(jobId) {
     .map((e) => e.courseSlug);
   const known = new Map();
   for (const slug of enrolledSlugs) {
-    const course = getCourseBySlug(slug);
+    const course = getCourse(slug);
     for (const tech of course?.technologies || []) known.set(skillKey(tech), { skill: tech, course: course.title });
   }
 
@@ -45,7 +45,7 @@ export async function getJobFit(jobId) {
 
   // Catalog courses (not already enrolled) that teach at least one missing skill.
   const missingKeys = new Set(missing.map(skillKey));
-  const suggestedCourses = courses
+  const suggestedCourses = listCourses({ publishedOnly: true })
     .filter((c) => !enrolledSlugs.includes(c.slug))
     .map((c) => ({
       slug: c.slug,

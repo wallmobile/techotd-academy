@@ -12,8 +12,8 @@
 import { createLead, findRecentDuplicateLead } from "@/lib/db/leads";
 import { validateEnquiryForm } from "@/lib/validateEnquiry";
 import { KNOWN_SOURCES } from "@/constants/enquirySources";
-import { getCourseBySlug } from "@/data/courses";
-import { getBatchById } from "@/data/batches";
+import { getCourse, getBatch, isCoursePublished } from "@/lib/catalog";
+import { PUBLIC_BATCH_STATUSES } from "@/constants/catalog";
 import { trainingModes } from "@/data/trainingModes";
 import { LEVELS } from "@/data/courseFilters";
 
@@ -50,15 +50,17 @@ export async function submitLead(payload, variant) {
   // Catalog references: present-but-unknown means tampering (the UI only
   // offers real values), so reject instead of storing a dangling reference.
   const courseSlug = str(payload.interestedCourse, 100);
-  if (courseSlug && !getCourseBySlug(courseSlug)) return { ok: false, error: INVALID_MESSAGE };
+  // Only published courses can be enquired about; an unpublished one is invalid input.
+  if (courseSlug && !getCourse(courseSlug, { publishedOnly: true })) return { ok: false, error: INVALID_MESSAGE };
 
   const mode = str(payload.preferredMode, 40);
   if (mode && !trainingModes.some((m) => m.slug === mode)) return { ok: false, error: INVALID_MESSAGE };
 
   const batchId = str(payload.preferredBatch, 100);
   if (batchId) {
-    const batch = getBatchById(batchId);
+    const batch = getBatch(batchId);
     if (!batch || (courseSlug && batch.courseSlug !== courseSlug)) return { ok: false, error: INVALID_MESSAGE };
+    if (!PUBLIC_BATCH_STATUSES.includes(batch.status) || !isCoursePublished(batch.courseSlug)) return { ok: false, error: INVALID_MESSAGE };
   }
 
   const experienceLevel = str(payload.experienceLevel, 20);

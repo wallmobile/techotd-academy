@@ -2,8 +2,7 @@ import Link from "next/link";
 import { Container } from "@/components/layout/Container";
 import { Breadcrumbs } from "@/components/shared/Breadcrumbs";
 import { EnquirySteps } from "@/components/enquiry/EnquirySteps";
-import { getCourseBySlug } from "@/data/courses";
-import { batches } from "@/data/batches";
+import { getCourse, listBatches } from "@/lib/catalog";
 import { cn } from "@/lib/utils";
 
 const copy = {
@@ -58,8 +57,8 @@ export function EnquiryShell({ variant, children }) {
     ...accent.split(" ").map((text) => ({ text, accent: true })),
     ...after.split(" ").map((text) => ({ text })),
   ];
-  const nextBatch = content.showNextBatch ? batches[0] : null;
-  const nextCourse = nextBatch ? getCourseBySlug(nextBatch.courseSlug) : null;
+  const nextBatch = content.showNextBatch ? listBatches({ publicOnly: true })[0] ?? null : null;
+  const nextCourse = nextBatch ? getCourse(nextBatch.courseSlug) : null;
 
   return (
     <section className="relative isolate overflow-hidden bg-surface">

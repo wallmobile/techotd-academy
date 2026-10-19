@@ -701,3 +701,54 @@ CREATE TABLE IF NOT EXISTS ai_usage (
 );
 
 CREATE INDEX IF NOT EXISTS idx_ai_usage_user_day ON ai_usage (user_id, created_at);
+
+-- --------------------------------------------------------------------------
+-- Admin-managed catalog overlay (Phase 10.11)
+--
+-- Courses and batches are defined in code (src/data/courses.js, batches.js)
+-- and every other table references them by slug / id string. These two tables
+-- do NOT replace that catalog: they overlay it. A BASE row stores admin edits
+-- to a code-defined record (NULL column = keep the code value); a CUSTOM row is
+-- a course/batch created in the admin panel. src/lib/catalog merges the two at
+-- read time. Nothing is ever deleted: courses are unpublished and batches are
+-- archived, so enrollments, fees and certificates keep resolving.
+-- JSON columns hold string arrays.
+-- --------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS catalog_courses (
+  slug               TEXT PRIMARY KEY,
+  origin             TEXT NOT NULL CHECK (origin IN ('BASE', 'CUSTOM')),
+  status             TEXT NOT NULL DEFAULT 'PUBLISHED' CHECK (status IN ('PUBLISHED', 'UNPUBLISHED')),
+  title              TEXT,
+  short_description  TEXT,
+  description        TEXT,
+  category_slug      TEXT,
+  level              TEXT,
+  duration           TEXT,
+  duration_band      TEXT,
+  modes              TEXT,
+  technologies       TEXT,
+  prerequisites      TEXT,
+  outcomes           TEXT,
+  created_by         TEXT REFERENCES users (id) ON DELETE SET NULL,
+  created_at         TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_by         TEXT REFERENCES users (id) ON DELETE SET NULL,
+  updated_at         TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS catalog_batches (
+  id          TEXT PRIMARY KEY,
+  origin      TEXT NOT NULL CHECK (origin IN ('BASE', 'CUSTOM')),
+  course_slug TEXT,
+  mode        TEXT,
+  schedule    TEXT,
+  starts_on   TEXT,
+  ends_on     TEXT,
+  status      TEXT,
+  location    TEXT,
+  created_by  TEXT REFERENCES users (id) ON DELETE SET NULL,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_by  TEXT REFERENCES users (id) ON DELETE SET NULL,
+  updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_catalog_batches_course ON catalog_batches (course_slug);

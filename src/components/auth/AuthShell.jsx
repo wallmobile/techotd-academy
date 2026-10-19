@@ -1,7 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import { getCourseBySlug } from "@/data/courses";
-import { batches } from "@/data/batches";
+import { getCourse, listBatches } from "@/lib/catalog";
 
 const DEFAULT_HIGHLIGHTS = [
   "One account across courses, batches and enquiries",
@@ -58,8 +57,8 @@ const FORM_STYLES = [
  */
 export function AuthShell({ eyebrow, title, description, highlights, aside, children }) {
   const points = highlights && highlights.length > 0 ? highlights : DEFAULT_HIGHLIGHTS;
-  const nextBatch = batches[0];
-  const nextCourse = nextBatch ? getCourseBySlug(nextBatch.courseSlug) : null;
+  const nextBatch = listBatches({ publicOnly: true })[0];
+  const nextCourse = nextBatch ? getCourse(nextBatch.courseSlug) : null;
 
   return (
     <div className="relative isolate flex min-h-dvh items-center justify-center overflow-hidden bg-surface px-4 py-8">

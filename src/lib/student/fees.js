@@ -5,14 +5,13 @@
 
 import { getCurrentUser } from "@/lib/auth/currentUser";
 import { listFeePlansForStudent, listPaymentsForPlan, getPaymentByReceiptToken, getFeePlanById } from "@/lib/db/fees";
-import { getBatchById } from "@/data/batches";
-import { getCourseBySlug } from "@/data/courses";
+import { getBatch, getCourse } from "@/lib/catalog";
 
 function describe(plan) {
-  const batch = getBatchById(plan.batchId);
+  const batch = getBatch(plan.batchId);
   return {
     id: plan.id,
-    courseTitle: getCourseBySlug(plan.courseSlug)?.title ?? plan.courseSlug,
+    courseTitle: getCourse(plan.courseSlug)?.title ?? plan.courseSlug,
     batchLabel: batch ? `${batch.mode} — ${batch.startDate}` : plan.batchId,
     currency: plan.currency,
     totalMinor: plan.totalMinor,

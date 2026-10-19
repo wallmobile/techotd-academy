@@ -10,7 +10,7 @@
 // Courses the student is already enrolled in are never recommended. Nothing
 // here guarantees employment; it only suggests learning options.
 
-import { courses, getCourseBySlug } from "@/data/courses";
+import { listCourses, getCourse } from "@/lib/catalog";
 import { generateText, sanitizeAiText } from "@/lib/ai/provider";
 import { getAiStudent, enrolledCourseSlugs, withAiLimits } from "@/lib/ai/guard";
 import { tokenizeInterests, skillKey } from "@/lib/ai/skills";
@@ -65,7 +65,7 @@ function publicCourse(course) {
 
 export function catalogRecommendations({ interests, excludeSlugs = [] }) {
   const tokens = tokenizeInterests(interests);
-  const scored = courses
+  const scored = listCourses({ publishedOnly: true })
     .filter((c) => !excludeSlugs.includes(c.slug))
     .map((c) => ({ course: c, ...scoreCourse(c, tokens) }))
     .filter((x) => x.score > 0)
@@ -144,7 +144,7 @@ export async function recommendCourses({ interests }, { generate = generateText 
           source: "ai",
           aiAvailable,
           note: null,
-          picks: picks.map((p) => ({ ...publicCourse(getCourseBySlug(p.slug)), reason: p.reason || "Suggested for your interests." })),
+          picks: picks.map((p) => ({ ...publicCourse(getCourse(p.slug, { publishedOnly: true })), reason: p.reason || "Suggested for your interests." })),
         };
       }
     }

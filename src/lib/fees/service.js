@@ -31,8 +31,7 @@ import {
   FEES_PAGE_SIZE,
   NOTE_MAX_LENGTH,
 } from "@/constants/fees";
-import { getBatchById } from "@/data/batches";
-import { getCourseBySlug } from "@/data/courses";
+import { getBatch, getCourse } from "@/lib/catalog";
 import { notifyFeeAssigned, notifyPaymentRecorded, notifyPaymentVoided } from "@/lib/notifications/events";
 
 const MESSAGES = {
@@ -71,10 +70,10 @@ function validDate(value) {
 }
 
 function describePlan(plan) {
-  const batch = getBatchById(plan.batchId);
+  const batch = getBatch(plan.batchId);
   return {
     ...plan,
-    courseTitle: getCourseBySlug(plan.courseSlug)?.title ?? plan.courseSlug,
+    courseTitle: getCourse(plan.courseSlug)?.title ?? plan.courseSlug,
     batchLabel: batch ? `${batch.mode} — ${batch.startDate}` : plan.batchId,
   };
 }
@@ -115,12 +114,12 @@ export async function getFeeFormData({ enrollmentId, query }) {
   if (!(await getFinanceContext())) return null;
   const enrollment = enrollmentId ? getEnrollmentForFee(enrollmentId) : null;
   const usable = enrollment && enrollment.status !== "CANCELLED" ? enrollment : null;
-  const batch = usable ? getBatchById(usable.batchId) : null;
+  const batch = usable ? getBatch(usable.batchId) : null;
   return {
     enrollment: usable
       ? {
           ...usable,
-          courseTitle: batch ? getCourseBySlug(batch.courseSlug)?.title ?? batch.courseSlug : "Unknown course",
+          courseTitle: batch ? getCourse(batch.courseSlug)?.title ?? batch.courseSlug : "Unknown course",
           batchLabel: batch ? `${batch.mode} — ${batch.startDate}` : usable.batchId,
           existingFeeId: getFeePlanByEnrollmentId(usable.id)?.id ?? null,
         }
@@ -128,8 +127,8 @@ export async function getFeeFormData({ enrollmentId, query }) {
     candidates: usable
       ? []
       : searchEnrollmentsWithoutFee(query || "").map((c) => {
-          const b = getBatchById(c.batchId);
-          return { ...c, courseTitle: b ? getCourseBySlug(b.courseSlug)?.title ?? b.courseSlug : c.batchId };
+          const b = getBatch(c.batchId);
+          return { ...c, courseTitle: b ? getCourse(b.courseSlug)?.title ?? b.courseSlug : c.batchId };
         }),
     currencies: SUPPORTED_CURRENCIES,
     defaultCurrency: DEFAULT_CURRENCY,
@@ -177,7 +176,7 @@ export async function assignFee({ enrollmentId, currency, total, discount, dueDa
   const cleaned = cleanNote(note);
   if (cleaned === null) return fail("note_long");
 
-  const batch = getBatchById(enrollment.batchId);
+  const batch = getBatch(enrollment.batchId);
   if (!batch) return fail("enrollment_invalid");
 
   const result = createFeePlanTx({
@@ -196,7 +195,7 @@ export async function assignFee({ enrollmentId, currency, total, discount, dueDa
   await notifyFeeAssigned({
     userId: enrollment.studentUserId,
     feePlanId: result.feePlanId,
-    courseTitle: getCourseBySlug(batch.courseSlug)?.title ?? batch.courseSlug,
+    courseTitle: getCourse(batch.courseSlug)?.title ?? batch.courseSlug,
   });
   return { ok: true, feePlanId: result.feePlanId, studentUserId: enrollment.studentUserId };
 }

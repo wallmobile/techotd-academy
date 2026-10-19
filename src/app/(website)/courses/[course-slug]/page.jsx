@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { courses, getCourseBySlug, getRelatedCourses } from "@/data/courses";
+import { getCourse, getRelatedCourses } from "@/lib/catalog";
 import { CourseDetailHero } from "@/components/courses/CourseDetailHero";
 import { CourseSubNav } from "@/components/courses/CourseSubNav";
 import { CourseOverview } from "@/components/courses/CourseOverview";
@@ -31,13 +31,10 @@ const SUBNAV_ITEMS = [
 // escaped form, so structured data is emitted with every "<" escaped.
 const JSON_LD_LT = String.fromCharCode(92) + "u003c";
 
-export function generateStaticParams() {
-  return courses.map((course) => ({ "course-slug": course.slug }));
-}
-
 export async function generateMetadata({ params }) {
   const { "course-slug": slug } = await params;
-  const course = getCourseBySlug(slug);
+  // Unpublished courses are not exposed on public routes.
+  const course = getCourse(slug, { publishedOnly: true });
 
   if (!course) {
     return { title: "Course Not Found" };
@@ -61,7 +58,7 @@ export async function generateMetadata({ params }) {
 
 export default async function CourseDetailPage({ params }) {
   const { "course-slug": slug } = await params;
-  const course = getCourseBySlug(slug);
+  const course = getCourse(slug, { publishedOnly: true });
 
   if (!course) {
     notFound();

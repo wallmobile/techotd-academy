@@ -13,7 +13,7 @@
 
 import { generateText } from "@/lib/ai/provider";
 import { getAiStudent, enrolledCourseSlugs, withAiLimits } from "@/lib/ai/guard";
-import { getCourseBySlug } from "@/data/courses";
+import { getCourse } from "@/lib/catalog";
 
 export const QUESTION_MAX = 1000;
 
@@ -60,7 +60,7 @@ export async function askAssistant({ question, courseSlug }, { generate = genera
     // Only a course the student is enrolled in — otherwise treated as invalid
     // without revealing whether the slug exists.
     if (!enrolledCourseSlugs(student.profile.id).includes(courseSlug)) return { ok: false, reason: "course_not_enrolled" };
-    course = getCourseBySlug(courseSlug);
+    course = getCourse(courseSlug);
     if (!course) return { ok: false, reason: "course_not_enrolled" };
   }
 

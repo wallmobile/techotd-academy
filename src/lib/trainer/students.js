@@ -6,14 +6,13 @@
 
 import { getTrainerContext } from "@/lib/trainer/context";
 import { listEnrolledStudentsForBatchIds } from "@/lib/db/batchEnrollments";
-import { getBatchById } from "@/data/batches";
-import { getCourseBySlug } from "@/data/courses";
+import { getBatch, getCourse } from "@/lib/catalog";
 import { computeCourseProgress } from "@/lib/student/progress";
 
 function enrichEnrollmentRow(row) {
-  const batch = getBatchById(row.batchId);
+  const batch = getBatch(row.batchId);
   if (!batch) return null;
-  const course = getCourseBySlug(batch.courseSlug);
+  const course = getCourse(batch.courseSlug);
   if (!course) return null;
 
   const progress = computeCourseProgress(row.studentProfileId, course);

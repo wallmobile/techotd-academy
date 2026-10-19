@@ -25,8 +25,7 @@ import {
   convertLeadTx,
 } from "@/lib/db/leads";
 import { LEAD_STATUSES, LEAD_ASSIGNABLE_ROLES, NOTE_MAX_LENGTH, LEADS_PAGE_SIZE } from "@/constants/crm";
-import { getCourseBySlug } from "@/data/courses";
-import { getBatchById } from "@/data/batches";
+import { getBatch, getCourse } from "@/lib/catalog";
 import { getTrainingModeBySlug } from "@/data/trainingModes";
 
 const DENIED = { ok: false, reason: "You don't have permission to do that." };
@@ -39,7 +38,7 @@ function totalPagesFor(total) {
 function decorate(lead) {
   return {
     ...lead,
-    courseTitle: lead.courseSlug ? getCourseBySlug(lead.courseSlug)?.title ?? lead.courseSlug : null,
+    courseTitle: lead.courseSlug ? getCourse(lead.courseSlug)?.title ?? lead.courseSlug : null,
     modeLabel: lead.mode ? getTrainingModeBySlug(lead.mode)?.title ?? lead.mode : null,
   };
 }
@@ -59,7 +58,7 @@ export async function getLeadFilterOptions() {
   return {
     courses: listDistinctLeadValues("course_slug", ctx.scopeUserId).map((slug) => ({
       value: slug,
-      label: getCourseBySlug(slug)?.title ?? slug,
+      label: getCourse(slug)?.title ?? slug,
     })),
     modes: listDistinctLeadValues("mode", ctx.scopeUserId).map((slug) => ({
       value: slug,
@@ -95,11 +94,11 @@ export async function getLeadDetail(leadId) {
   const lead = getLeadById(leadId);
   if (!lead || !canViewLead(ctx, lead)) return null;
 
-  const batch = lead.batchId ? getBatchById(lead.batchId) : null;
+  const batch = lead.batchId ? getBatch(lead.batchId) : null;
   const canModify = canModifyLead(ctx, lead);
   return {
     lead: decorate(lead),
-    batchLabel: batch ? `${getCourseBySlug(batch.courseSlug)?.title ?? batch.courseSlug} — ${batch.mode} (${batch.startDate})` : null,
+    batchLabel: batch ? `${getCourse(batch.courseSlug)?.title ?? batch.courseSlug} — ${batch.mode} (${batch.startDate})` : null,
     notes: listLeadNotes(lead.id),
     permissions: {
       canModify,

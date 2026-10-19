@@ -8,7 +8,7 @@
 // answer with an identical "not found" and reveal nothing.
 
 import { getCertificateByToken } from "@/lib/db/certificates";
-import { getCourseBySlug } from "@/data/courses";
+import { getCourse } from "@/lib/catalog";
 
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{16,64}$/;
 
@@ -20,7 +20,7 @@ export function getPublicVerification(token) {
     valid: cert.status === "ACTIVE",
     status: cert.status === "ACTIVE" ? "VALID" : "REVOKED",
     certificateNumber: cert.certificateNumber,
-    courseTitle: getCourseBySlug(cert.courseSlug)?.title ?? cert.courseSlug,
+    courseTitle: getCourse(cert.courseSlug)?.title ?? cert.courseSlug,
     issuedAt: cert.issuedAt,
     holderName: cert.studentName,
     issuer: "TechOTD Academy",

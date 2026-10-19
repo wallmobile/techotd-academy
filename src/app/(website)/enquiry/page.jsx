@@ -1,6 +1,6 @@
 import { EnquiryForm } from "@/components/enquiry/EnquiryForm";
 import { EnquiryShell } from "@/components/enquiry/EnquiryShell";
-import { getCourseBySlug } from "@/data/courses";
+import { getCourse, listCourses, listBatches } from "@/lib/catalog";
 import { getTrainingModeBySlug } from "@/data/trainingModes";
 import { KNOWN_SOURCES } from "@/lib/enquiry";
 
@@ -22,7 +22,7 @@ function readParams(searchParams) {
   const modeParam = typeof searchParams.mode === "string" ? searchParams.mode : "";
   const sourceParam = typeof searchParams.source === "string" ? searchParams.source : "";
 
-  const course = getCourseBySlug(courseParam) ? courseParam : "";
+  const course = getCourse(courseParam, { publishedOnly: true }) ? courseParam : "";
   const mode = getTrainingModeBySlug(modeParam) ? modeParam : "";
   const source = KNOWN_SOURCES.includes(sourceParam) ? sourceParam : "direct";
 
@@ -35,7 +35,14 @@ export default async function EnquiryPage({ searchParams }) {
 
   return (
     <EnquiryShell variant="enquiry">
-      <EnquiryForm variant="enquiry" initialCourse={course} initialMode={mode} source={source} />
+      <EnquiryForm
+        variant="enquiry"
+        initialCourse={course}
+        initialMode={mode}
+        source={source}
+        courses={listCourses({ publishedOnly: true }).map((c) => ({ slug: c.slug, title: c.title }))}
+        batches={listBatches({ publicOnly: true })}
+      />
     </EnquiryShell>
   );
 }

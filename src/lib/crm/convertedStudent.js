@@ -4,8 +4,7 @@
 // the viewer is a CRM manager.
 
 import { getUserForEnrollment, listEnrollmentsForUser } from "@/lib/db/enrollments";
-import { getBatchById } from "@/data/batches";
-import { getCourseBySlug } from "@/data/courses";
+import { getBatch, getCourse } from "@/lib/catalog";
 
 export function getEnrollmentsForConvertedStudent(userId) {
   const user = getUserForEnrollment(userId);
@@ -15,11 +14,11 @@ export function getEnrollmentsForConvertedStudent(userId) {
     name: user.name,
     email: user.email,
     enrollments: listEnrollmentsForUser(userId).map((e) => {
-      const batch = getBatchById(e.batchId);
+      const batch = getBatch(e.batchId);
       return {
         id: e.id,
         status: e.status,
-        courseTitle: batch ? getCourseBySlug(batch.courseSlug)?.title ?? batch.courseSlug : "Unknown course",
+        courseTitle: batch ? getCourse(batch.courseSlug)?.title ?? batch.courseSlug : "Unknown course",
         batchLabel: batch ? `${batch.mode} — ${batch.startDate}` : e.batchId,
       };
     }),

@@ -3,11 +3,11 @@ import { SectionHeading } from "@/components/shared/SectionHeading";
 import { ArrowLink } from "@/components/shared/ArrowLink";
 import { CourseCard } from "@/components/courses/CourseCard";
 import { Gradient } from "@/components/training/icons";
-import { getCourseBySlug } from "@/data/courses";
+import { getCourse } from "@/lib/catalog";
 
 export function RelatedTrainingCourses({ trainingMode }) {
   const courses = trainingMode.relatedCourses
-    .map((slug) => getCourseBySlug(slug))
+    .map((slug) => getCourse(slug, { publishedOnly: true }))
     .filter(Boolean);
 
   if (courses.length === 0) return null;

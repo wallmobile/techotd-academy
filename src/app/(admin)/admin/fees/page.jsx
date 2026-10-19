@@ -12,7 +12,7 @@ import { Select } from "@/components/ui/Select";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { FEE_STATUS_LABELS } from "@/constants/fees";
-import { courses } from "@/data/courses";
+import { listCourses } from "@/lib/catalog";
 import { formatMinor } from "@/lib/money";
 
 export const metadata = {
@@ -79,7 +79,7 @@ export default async function AdminFeesPage({ searchParams }) {
             </Select>
             <Select label="Course" id="course" name="course" defaultValue={params.course}>
               <option value="">All courses</option>
-              {courses.map((c) => (
+              {listCourses().map((c) => (
                 <option key={c.slug} value={c.slug}>
                   {c.title}
                 </option>

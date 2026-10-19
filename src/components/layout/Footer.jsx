@@ -5,7 +5,7 @@ import { NavItem } from "@/components/layout/NavItem";
 import { Button } from "@/components/ui/Button";
 import { legalLinks } from "@/constants/navigation";
 import { contact } from "@/constants/contact";
-import { courses } from "@/data/courses";
+import { listCourses } from "@/lib/catalog";
 
 const contactDetails = [
   {
@@ -99,6 +99,7 @@ const socialLinks = [
 ];
 
 export function Footer() {
+  const courses = listCourses({ publishedOnly: true });
   const year = new Date().getFullYear();
 
   return (
