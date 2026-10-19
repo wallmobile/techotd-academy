@@ -180,3 +180,46 @@ test("PW5 mobile: the account page fits a phone and the change works from the dr
     await m.close();
   }
 });
+
+test("PW6 password hashes and passwords never appear in any admin page or in the password-change network traffic", async () => {
+  const HASH = /\$2[aby]\$\d{2}\$|password_?hash/i;
+  const leaks = [];
+  const s = await new Session(stack, "contentmgr-leak").open();
+  try {
+    // capture every response body during the whole change flow (HTML, RSC payloads, action responses)
+    s.page.on("response", async (r) => {
+      const type = r.headers()["content-type"] || "";
+      if (!/text|json|x-component/.test(type)) return;
+      const body = await r.text().catch(() => "");
+      if (HASH.test(body)) leaks.push(`hash in ${r.url()}`);
+      if (body.includes(NEW)) leaks.push(`new password echoed by ${r.url()}`);
+      if (body.includes(stack.data.password)) leaks.push(`old password echoed by ${r.url()}`);
+    });
+    await s.login("contentmgr");
+    await s.goto("/admin/account");
+    await fillPasswords(s, { current: "definitely-wrong-1", next: NEW });
+    await s.page.getByRole("button", { name: "Change password" }).click();
+    await s.page.getByText("That current password is incorrect.").waitFor();
+    await fillPasswords(s, { current: stack.data.password, next: NEW });
+    await s.page.getByRole("button", { name: "Change password" }).click();
+    await s.page.getByText(/Your password has been changed/).waitFor();
+  } finally {
+    await s.close();
+  }
+  assert.deepEqual(leaks, [], "no secrets in the password-change traffic");
+
+  // pages that list or show users never render a hash (admin sees the most account data)
+  const admin = await new Session(stack, "superadmin-leak").open();
+  try {
+    await admin.login("superadmin");
+    const ids = stack.data.users;
+    const pages = ["/admin/account", "/admin/users", `/admin/users/${ids.student.id}`, `/admin/users/${ids.superadmin.id}`, "/admin/students", `/admin/students/${ids.student.id}`, "/admin/trainers", `/admin/trainers/${ids.trainer.id}`, "/admin/batches/full-stack-development-01", "/admin/roles"];
+    for (const p of pages) {
+      await admin.goto(p);
+      await admin.page.waitForLoadState("networkidle").catch(() => {});
+      assert.ok(!HASH.test(await admin.page.content()), `${p} exposes a hash`);
+    }
+  } finally {
+    await admin.close();
+  }
+});

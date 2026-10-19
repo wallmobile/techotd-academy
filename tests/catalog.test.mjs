@@ -544,3 +544,81 @@ test("opening a database created before the catalog tables existed adds them in 
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// ------------------------------------------- final-regression additions
+
+test("certificates survive unpublishing: the public verification page and the student's list keep naming the course", async () => {
+  const { issueCertificate } = await import("@/lib/certificates/service");
+  const { getPublicVerification } = await import("@/lib/certificates/verify");
+  const { getMyCertificates } = await import("@/lib/student/certificates");
+  await as("ADMIN", "cert-admin");
+  const { slug, title } = await newPublishedCourse();
+  const { batchId } = await createBatch(batchInput(slug, { status: "Open" }));
+  const student = await makeUser("STUDENT", "cert-student");
+  const enrol = await createEnrollment({ studentUserId: student.id, courseSlug: slug, batchId });
+  assert.equal(enrol.ok, true);
+  const issued = await issueCertificate({ enrollmentId: enrol.enrollmentId, mode: "MANUAL", approvalNote: "Regression: approved for the catalog test" });
+  assert.equal(issued.ok, true, JSON.stringify(issued));
+  const token = db.prepare("SELECT verification_token t FROM certificates WHERE id = ?").get(issued.certificateId).t;
+  assert.equal(getPublicVerification(token).courseTitle, title);
+
+  assert.equal((await setCourseStatus(slug, "UNPUBLISHED")).ok, true);
+  const afterVerify = getPublicVerification(token);
+  assert.deepEqual([afterVerify.valid, afterVerify.courseTitle], [true, title], "verification is unaffected by unpublishing");
+  await signIn(student);
+  const mine = await getMyCertificates();
+  assert.equal(mine.length, 1);
+  assert.equal(mine[0].course.title, title, "the student's certificate still resolves its course");
+  assert.equal(db.prepare("SELECT status FROM certificates WHERE id = ?").get(issued.certificateId).status, "ACTIVE");
+});
+
+test("failed catalog writes are atomic: nothing partial is left behind (row, audit entry or status)", async () => {
+  const { insertCustomCourse, insertCustomBatch, setCourseStatus: dbSetStatus } = await import("@/lib/db/catalog");
+  const admin = await makeUser("ADMIN", "atomic-admin");
+  const fields = { title: "Atomic Course", shortDescription: "x".repeat(12), description: "y".repeat(30), categorySlug: "programming", level: "Beginner", duration: "1 Month", durationBand: "Short (Up to 2 Months)", modes: ["Live Online"], technologies: [], prerequisites: [], outcomes: [] };
+  const count = (table, col, id) => db.prepare(`SELECT COUNT(*) c FROM ${table} WHERE ${col} = ?`).get(id).c;
+  const audits = (id) => db.prepare("SELECT COUNT(*) c FROM audit_log WHERE entity_id = ?").get(id).c;
+
+  // 1. a duplicate key aborts the second insert entirely
+  const slug = `atomic-${uid()}`;
+  insertCustomCourse(admin.id, slug, fields, "UNPUBLISHED");
+  assert.throws(() => insertCustomCourse(admin.id, slug, { ...fields, title: "Second" }, "UNPUBLISHED"));
+  assert.deepEqual([count("catalog_courses", "slug", slug), audits(slug)], [1, 1], "still exactly one row and one audit entry");
+  assert.equal(getCourse(slug).title, "Atomic Course", "the first record is untouched");
+
+  // 2. a foreign-key failure (unknown actor) rolls back the row AND its audit entry
+  const orphan = `atomic-fk-${uid()}`;
+  assert.throws(() => insertCustomCourse("no-such-user", orphan, fields, "UNPUBLISHED"));
+  assert.deepEqual([count("catalog_courses", "slug", orphan), audits(orphan)], [0, 0]);
+
+  // 3. a CHECK-constraint failure on status leaves the status and the audit trail alone
+  assert.throws(() => dbSetStatus(admin.id, slug, "CUSTOM", "NOT_A_STATUS"));
+  assert.equal(getCourse(slug).status, "UNPUBLISHED");
+  assert.equal(audits(slug), 1);
+
+  // 4. same for batches
+  const bid = `${slug}-01`;
+  const bf = { courseSlug: slug, mode: "Live Online", schedule: "Mon 9", startsOn: "2027-05-03", endsOn: null, status: "Upcoming", location: "Online" };
+  insertCustomBatch(admin.id, bid, bf);
+  assert.throws(() => insertCustomBatch(admin.id, bid, bf));
+  assert.throws(() => insertCustomBatch("no-such-user", `${slug}-02`, bf));
+  assert.deepEqual([count("catalog_batches", "id", bid), audits(bid), count("catalog_batches", "id", `${slug}-02`), audits(`${slug}-02`)], [1, 1, 0, 0]);
+});
+
+test("a Completed batch keeps its enrollments, leaves the public list and refuses new enrollments", async () => {
+  await as("ADMIN", "batch-completed");
+  const { slug } = await newPublishedCourse();
+  const { batchId } = await createBatch(batchInput(slug, { status: "Open" }));
+  const student = await makeUser("STUDENT", "completed-student");
+  const enrol = await createEnrollment({ studentUserId: student.id, courseSlug: slug, batchId });
+  const rowBefore = db.prepare("SELECT * FROM batch_enrollments WHERE id = ?").get(enrol.enrollmentId);
+
+  assert.equal((await setBatchStatus(batchId, "Completed")).ok, true);
+  assert.ok(!listBatches({ publicOnly: true }).some((b) => b.id === batchId));
+  assert.equal(getBatch(batchId).status, "Completed");
+  const other = await makeUser("STUDENT", "completed-other");
+  assert.equal((await createEnrollment({ studentUserId: other.id, courseSlug: slug, batchId })).reason, "batch_closed");
+  assert.deepEqual(db.prepare("SELECT * FROM batch_enrollments WHERE id = ?").get(enrol.enrollmentId), rowBefore, "history untouched");
+  assert.equal((await setBatchStatus(batchId, "Archived")).reason, "archive_blocked", "an ACTIVE enrollment still prevents archiving");
+  assert.equal((await getEnrollmentDetail(enrol.enrollmentId)).batchStatus, "Completed");
+});
