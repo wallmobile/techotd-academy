@@ -905,6 +905,13 @@ Students keep their own flow on the profile page; trainers do not yet have a sel
 
 ## Deployment Prerequisites & Verification (Phase 10.10)
 
+> **Staging / production deployment:** see [docs/STAGING.md](docs/STAGING.md) (environment, build and
+> start, persistent SQLite storage, migrations, backup and restore, health check `/api/health`,
+> smoke tests, rollback, and exactly what is and is not verified). `NEXT_PUBLIC_SITE_URL` must be set
+> at **build** time as well as at runtime; the server validates its configuration at start
+> (`src/instrumentation.js`) and exits on a dangerous setting. `npm run backup:verify -- <file>`
+> checks a backup.
+
 **Required in production**
 - `NEXT_PUBLIC_SITE_URL` (absolute https URL), `DATABASE_URL`.
 - HTTPS termination in front of the app (session cookies are `Secure`).
