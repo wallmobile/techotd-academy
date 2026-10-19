@@ -29,6 +29,8 @@ test("PW1 every staff role finds My Account in its navigation; students, trainer
       await s.goto(role === "superadmin" ? "/super-admin" : "/admin");
       await s.page.locator('aside nav a[href="/admin/account"]').click();
       await s.page.waitForURL("**/admin/account");
+      // wait for the streamed page, not the loading skeleton
+      await s.page.getByRole("heading", { name: "Change password" }).waitFor({ timeout: 10000 });
       const text = await bodyText(s.page);
       assert.ok(text.includes(stack.data.users[role].email), `${role} sees their own email`);
       assert.match(text, /Change password/);
