@@ -17,6 +17,7 @@ export const metadata = {
 function areaFor(role) {
   if (AREA_ROLES.student.includes(role)) return "Student LMS";
   if (AREA_ROLES.trainer.includes(role)) return "Trainer area";
+  if (AREA_ROLES["super-admin"].includes(role)) return "Super Admin console + Admin area";
   if (AREA_ROLES.admin.includes(role)) return "Admin area";
   return "—";
 }

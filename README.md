@@ -274,6 +274,21 @@ open `/admin` but only see a limited landing page and are redirected away from
 the management routes. Admin queries never select password hashes, session
 tokens or reset tokens. No schema change was needed in this phase.
 
+**Super Admin console (`/super-admin`).** A SUPER_ADMIN signs in to its own
+console instead of the shared Admin shell (`ROLE_HOME_ROUTES`), and can still
+open `/admin` from the console nav. It holds the controls an ADMIN must not
+have: an overview (staff by role, admin-account count, system status),
+`/super-admin/staff` (all staff accounts, search/role filter) and
+`/super-admin/staff/new` (create an ADMIN, COUNSELLOR, ACCOUNTANT,
+CONTENT_MANAGER or PLACEMENT_MANAGER). Activate/deactivate stays on
+`/admin/users/[user-id]` (already Super-Admin-only for admin accounts, with
+self-lockout and last-Super-Admin protection). SUPER_ADMIN, STUDENT and
+TRAINER can never be created from this form — a new Super Admin is bootstrapped
+with `npm run setup:admin`. Access is `requireSuperAdminContext()` per page and
+`getSuperAdminContext()` in every domain function and Server Action
+(`src/lib/superAdmin/`); ADMIN and every other role are redirected to their own
+area. Role editing and the audit log are still deferred.
+
 **Audit log — not implemented.** Future admin phases should record role
 changes, account status changes, trainer assignments, financial actions and
 certificate actions.

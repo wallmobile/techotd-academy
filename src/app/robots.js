@@ -7,7 +7,7 @@ export default function robots() {
       allow: "/",
       // Private, authenticated areas and the certificate-verification lookup
       // are not for crawlers (they are also noindex).
-      disallow: ["/admin", "/student", "/trainer", "/verify-certificate"],
+      disallow: ["/admin", "/super-admin", "/student", "/trainer", "/verify-certificate"],
     },
     sitemap: `${siteUrl}/sitemap.xml`,
   };

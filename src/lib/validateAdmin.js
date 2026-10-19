@@ -4,6 +4,7 @@
 // doesn't have (confirmation, consent) satisfied.
 
 import { validateRegisterForm } from "@/lib/validateAuth";
+import { CREATABLE_STAFF_ROLES } from "@/constants/roles";
 
 export function validateCreateTrainerForm(values) {
   const { name, email, phone, password } = validateRegisterForm({
@@ -13,4 +14,12 @@ export function validateCreateTrainerForm(values) {
   });
   const errors = { name, email, phone, password };
   return Object.fromEntries(Object.entries(errors).filter(([, message]) => message));
+}
+
+// Super Admin "create staff account": same rules as the trainer form plus a
+// role that must be one of the creatable staff roles.
+export function validateCreateStaffForm(values) {
+  const errors = validateCreateTrainerForm(values);
+  if (!CREATABLE_STAFF_ROLES.includes(values.role)) errors.role = "Please choose a role.";
+  return errors;
 }

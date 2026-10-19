@@ -8,7 +8,7 @@ import { logoutAction } from "@/lib/auth/actions";
 import { cn } from "@/lib/utils";
 
 /** Admin counterpart of TrainerSidebar: persistent desktop/tablet sidebar with a compact mode. */
-export function AdminSidebar({ role, collapsed, onToggleCollapsed }) {
+export function AdminSidebar({ role, navItems, brand = "TechOTD Admin", collapsed, onToggleCollapsed }) {
   return (
     <aside
       className={cn(
@@ -21,12 +21,12 @@ export function AdminSidebar({ role, collapsed, onToggleCollapsed }) {
           <span className="flex h-8 w-8 flex-none items-center justify-center rounded-sm bg-primary text-xs font-bold text-white">
             T
           </span>
-          {!collapsed && <span className="truncate">TechOTD Admin</span>}
+          {!collapsed && <span className="truncate">{brand}</span>}
         </Link>
       </div>
 
       <div className="flex-1 overflow-y-auto px-3 py-4">
-        <AdminNavList role={role} compact={collapsed} />
+        <AdminNavList role={role} items={navItems} compact={collapsed} />
       </div>
 
       <div className="flex flex-col gap-2 border-t border-border p-3">

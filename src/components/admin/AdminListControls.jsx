@@ -11,7 +11,7 @@ const SORT_LABELS = { newest: "Newest first", oldest: "Oldest first", name: "Nam
  * JS, and the server re-parses and sanitizes every value (see
  * parseListParams). Submitting resets to page 1.
  */
-export function AdminSearchForm({ basePath, params, searchLabel, showRoleFilter = false }) {
+export function AdminSearchForm({ basePath, params, searchLabel, showRoleFilter = false, roles = ROLES }) {
   const hasFilters = params.q || params.role || params.sort !== "newest";
   return (
     <form method="get" action={basePath} role="search" className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_auto] lg:items-end">
@@ -19,7 +19,7 @@ export function AdminSearchForm({ basePath, params, searchLabel, showRoleFilter 
       {showRoleFilter ? (
         <Select label="Role" id="role" name="role" defaultValue={params.role}>
           <option value="">All roles</option>
-          {ROLES.map((role) => (
+          {roles.map((role) => (
             <option key={role} value={role}>
               {ROLE_LABELS[role]}
             </option>

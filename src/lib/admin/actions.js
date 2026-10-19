@@ -85,5 +85,7 @@ export async function setUserStatusAction(_prevState, formData) {
   revalidatePath("/admin/students");
   revalidatePath("/admin/trainers");
   revalidatePath("/admin");
+  revalidatePath("/super-admin");
+  revalidatePath("/super-admin/staff");
   return { status: "success", message: `Account status set to ${result.status}.` };
 }

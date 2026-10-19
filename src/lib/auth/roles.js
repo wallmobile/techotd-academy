@@ -12,15 +12,15 @@ export const STAFF_ROLES = [
   "PLACEMENT_MANAGER",
 ];
 
-// Where a freshly logged-in user lands, by role. Staff-type roles share the
-// /admin shell for now (Phase 7 scope) but keep their distinct `role`
-// value in the database — this map is presentation routing only, not a
-// permissions merge.
+// Where a freshly logged-in user lands, by role. SUPER_ADMIN has its own
+// console (/super-admin) and can still open /admin; the other staff-type
+// roles share the /admin shell but keep their distinct `role` value in the
+// database — this map is presentation routing only, not a permissions merge.
 export const ROLE_HOME_ROUTES = {
   STUDENT: "/student",
   TRAINER: "/trainer",
   ADMIN: "/admin",
-  SUPER_ADMIN: "/admin",
+  SUPER_ADMIN: "/super-admin",
   COUNSELLOR: "/admin",
   ACCOUNTANT: "/admin",
   CONTENT_MANAGER: "/admin",
@@ -39,10 +39,11 @@ export const AREA_ROLES = {
   student: ["STUDENT"],
   trainer: ["TRAINER"],
   admin: STAFF_ROLES,
+  "super-admin": ["SUPER_ADMIN"],
 };
 
 export function rolesForArea(area) {
   return AREA_ROLES[area] || [];
 }
 
-export { ROLE_LABELS, ADMIN_MANAGEMENT_ROLES } from "@/constants/roles";
+export { ROLE_LABELS, ADMIN_MANAGEMENT_ROLES, SUPER_ADMIN_ROLES, CREATABLE_STAFF_ROLES } from "@/constants/roles";

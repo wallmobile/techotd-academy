@@ -67,6 +67,33 @@ export function listUsersPage({ q = "", role = "", sort = "newest", limit = PAGE
   return { rows: rows.map(rowToUser), total };
 }
 
+// Staff (non-student, non-trainer) accounts for the Super Admin console.
+// `roles` is a caller-supplied whitelist of fixed role constants; the values
+// are bound as parameters (never interpolated), `role` narrows to one of them.
+export function listStaffPage({ roles, q = "", role = "", sort = "newest", limit = PAGE_SIZE, offset = 0 }) {
+  const params = {};
+  const placeholders = roles.map((r, i) => {
+    params[`r${i}`] = r;
+    return `@r${i}`;
+  });
+  const clauses = [`u.role IN (${placeholders.join(", ")})`];
+  if (role && roles.includes(role)) {
+    clauses.push("u.role = @role");
+    params.role = role;
+  }
+  if (q) {
+    params.q = likePattern(q);
+    clauses.push("(u.name LIKE @q ESCAPE '\\' OR u.email LIKE @q ESCAPE '\\')");
+  }
+  const where = `WHERE ${clauses.join(" AND ")}`;
+  const order = SORTS[sort] || SORTS.newest;
+  const rows = db
+    .prepare(`SELECT ${USER_COLUMNS} FROM users u ${where} ORDER BY ${order} LIMIT @limit OFFSET @offset`)
+    .all({ ...params, now: new Date().toISOString(), limit, offset });
+  const total = db.prepare(`SELECT COUNT(*) AS c FROM users u ${where}`).get(params).c;
+  return { rows: rows.map(rowToUser), total };
+}
+
 export function listStudentsPage({ q = "", sort = "newest", limit = PAGE_SIZE, offset = 0 }) {
   const { where, countParams, pageParams } = build({
     q,

@@ -13,15 +13,15 @@ import { AdminHeader } from "@/components/admin/AdminHeader";
  * header here shows the section title as plain text), so each page has
  * exactly one h1.
  */
-export function AdminShellClient({ user, title, unreadCount = 0, children }) {
+export function AdminShellClient({ user, title, unreadCount = 0, navItems, brand, children }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const role = user.role;
 
   return (
     <div className="flex min-h-screen bg-surface">
-      <AdminSidebar role={role} collapsed={collapsed} onToggleCollapsed={() => setCollapsed((v) => !v)} />
-      <AdminMobileDrawer role={role} open={mobileOpen} onClose={() => setMobileOpen(false)} />
+      <AdminSidebar role={role} navItems={navItems} brand={brand} collapsed={collapsed} onToggleCollapsed={() => setCollapsed((v) => !v)} />
+      <AdminMobileDrawer role={role} navItems={navItems} brand={brand} open={mobileOpen} onClose={() => setMobileOpen(false)} />
 
       <div className="flex min-w-0 flex-1 flex-col">
         <AdminHeader user={user} title={title} unreadCount={unreadCount} onOpenMobileNav={() => setMobileOpen(true)} />

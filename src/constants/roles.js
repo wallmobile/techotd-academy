@@ -21,3 +21,12 @@ export const ROLE_LABELS = {
 // modules exist. Granular permissions can replace this list later without
 // touching call sites (they all go through src/lib/admin/context.js).
 export const ADMIN_MANAGEMENT_ROLES = ["SUPER_ADMIN", "ADMIN"];
+
+// Super Admin console (/super-admin): platform-level controls that an ADMIN
+// must not have — creating and managing other staff accounts.
+export const SUPER_ADMIN_ROLES = ["SUPER_ADMIN"];
+
+// Roles a Super Admin may create from the console. SUPER_ADMIN is
+// deliberately absent: a new Super Admin is bootstrapped out-of-band
+// (npm run setup:admin), never minted from a web form.
+export const CREATABLE_STAFF_ROLES = ["ADMIN", "COUNSELLOR", "ACCOUNTANT", "CONTENT_MANAGER", "PLACEMENT_MANAGER"];

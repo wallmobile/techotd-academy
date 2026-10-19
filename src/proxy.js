@@ -8,7 +8,7 @@ import { SESSION_COOKIE_NAME } from "@/lib/auth/constants";
 // src/lib/auth/guards.js, called from each protected route group's
 // layout. If this file were ever removed, every protected page would
 // still be safe — it would just take one extra render before redirecting.
-const PROTECTED_PREFIXES = ["/student", "/trainer", "/admin"];
+const PROTECTED_PREFIXES = ["/student", "/trainer", "/admin", "/super-admin"];
 
 export function proxy(request) {
   const { pathname } = request.nextUrl;
@@ -26,5 +26,5 @@ export function proxy(request) {
 }
 
 export const config = {
-  matcher: ["/student/:path*", "/trainer/:path*", "/admin/:path*"],
+  matcher: ["/student/:path*", "/trainer/:path*", "/admin/:path*", "/super-admin/:path*"],
 };

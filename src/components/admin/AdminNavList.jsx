@@ -11,11 +11,13 @@ import { cn } from "@/lib/utils";
  * compact/icon-only mode, and "Soon" items rendered as non-interactive
  * spans (never links). `role` hides items the signed-in staff role
  * can't use (e.g. counsellors only get Dashboard + Leads) — presentation only; the
- * routes themselves enforce access server-side.
+ * routes themselves enforce access server-side. `items` defaults to the
+ * Admin nav; the Super Admin console passes its own list (`exact` items match
+ * only their own href, so the console home isn't "active" on every sub-page).
  */
-export function AdminNavList({ role, compact = false, onNavigate, className }) {
+export function AdminNavList({ role, items: navItems = adminNavItems, compact = false, onNavigate, className }) {
   const pathname = usePathname();
-  const items = adminNavItems.filter((item) => !item.roles || item.roles.includes(role));
+  const items = navItems.filter((item) => !item.roles || item.roles.includes(role));
 
   return (
     <nav aria-label="Admin navigation" className={cn("flex flex-col gap-1", className)}>
@@ -43,7 +45,7 @@ export function AdminNavList({ role, compact = false, onNavigate, className }) {
         }
 
         const isActive =
-          pathname === item.href || (item.href !== "/admin" && pathname.startsWith(`${item.href}/`));
+          pathname === item.href || (item.href !== "/admin" && !item.exact && pathname.startsWith(`${item.href}/`));
 
         return (
           <Link
