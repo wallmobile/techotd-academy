@@ -114,19 +114,50 @@ function addColumnIfMissing(db, table, column, definition) {
  * migrated database behind. IMMEDIATE also serializes processes that start at
  * the same moment (e.g. Next's parallel build workers).
  */
+// Several processes can open a brand-new database file at the same instant
+// (`next build` runs ~13 workers). Switching the file to WAL and creating the
+// schema then collide: SQLite answers SQLITE_BUSY / SQLITE_LOCKED (or, on
+// Windows, an I/O error) WITHOUT waiting, because a journal-mode change can't
+// use the busy handler. These errors are transient by nature, so retry a
+// bounded number of times with jitter; anything else, or a persistent
+// failure, is thrown unchanged.
+function isTransientLockError(error) {
+  const code = String(error?.code || "");
+  return code === "SQLITE_BUSY" || code === "SQLITE_LOCKED" || code.startsWith("SQLITE_IOERR");
+}
+
+function sleepSync(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+export function withLockRetry(fn, { attempts = 80 } = {}) {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return fn();
+    } catch (error) {
+      if (!isTransientLockError(error) || attempt >= attempts) throw error;
+      sleepSync(15 + Math.floor(Math.random() * 85));
+    }
+  }
+}
+
 export function initializeDatabase(db, schemaSql) {
-  db.transaction(() => {
-    db.exec(schemaSql);
-    migrate(db);
-  }).immediate();
+  withLockRetry(() =>
+    db
+      .transaction(() => {
+        db.exec(schemaSql);
+        migrate(db);
+      })
+      .immediate()
+  );
 }
 
 function createConnection() {
   const dbPath = resolveDatabasePath();
   fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 
-  const db = new DatabaseConstructor(dbPath);
-  db.pragma("journal_mode = WAL");
+  const db = withLockRetry(() => new DatabaseConstructor(dbPath));
+  withLockRetry(() => db.pragma("journal_mode = WAL"));
   db.pragma("foreign_keys = ON");
 
   const schemaPath = path.join(process.cwd(), "src", "lib", "db", "schema.sql");

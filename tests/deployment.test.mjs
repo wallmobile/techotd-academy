@@ -296,3 +296,19 @@ test("config: a build made with a different (or no) NEXT_PUBLIC_SITE_URL than th
   assert.equal(check("https://a.example.org", "not a url").ok, false, "an invalid baked value is an error");
   assert.equal(inspectEnvironment({ ...base, NEXT_PUBLIC_SITE_URL: "https://z.example.org" }).ok, true, "not checked when no built value is supplied");
 });
+
+test("thirteen processes opening a brand-new database at the same instant (what `next build` does) all succeed, repeatedly (eight rounds)", async () => {
+  for (let round = 1; round <= 8; round += 1) {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "techotd-fresh-"));
+    const file = path.join(dir, "fresh.db");
+    try {
+      const results = await Promise.all(Array.from({ length: 13 }, () => child(file, "counts")));
+      const failed = results.filter((r) => r.code !== 0);
+      assert.equal(failed.length, 0, `round ${round}: ${failed.length} of 13 failed: ${failed[0]?.err.slice(0, 300)}`);
+      const counts = JSON.parse(results[0].out.trim());
+      assert.deepEqual([counts.integrity, counts.fk], ["ok", 0]);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true, maxRetries: 8, retryDelay: 250 });
+    }
+  }
+});
