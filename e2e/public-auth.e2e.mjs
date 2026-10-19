@@ -159,7 +159,7 @@ test("B1 wrong password and unknown email give the same generic message", async 
 });
 
 test("B2 each role signs in to its own area and the session cookie is HttpOnly + SameSite=Lax", async () => {
-  const expected = { student: "/student", trainer: "/trainer", admin: "/admin", superadmin: "/admin", counsellor: "/admin", accountant: "/admin", placement: "/admin" };
+  const expected = { student: "/student", trainer: "/trainer", admin: "/admin", superadmin: "/super-admin", counsellor: "/admin", accountant: "/admin", placement: "/admin" };
   for (const [key, area] of Object.entries(expected)) {
     const s = await new Session(stack, key).open();
     try {

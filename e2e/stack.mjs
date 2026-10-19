@@ -21,12 +21,12 @@ export function findChrome() {
   return CHROME_CANDIDATES.find((p) => fs.existsSync(p));
 }
 
-export async function startStack({ port = 3210, env = {} } = {}) {
+export async function startStack({ port = 3210, env = {}, bulk = false } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "techotd-e2e-"));
   const dbFile = path.join(dir, "e2e.db");
   const DATABASE_URL = `file:${dbFile.split(path.sep).join("/")}`;
   const seedFile = path.join(dir, "seed.json");
-  const seed = spawnSync(process.execPath, ["e2e/seed.mjs", seedFile], {
+  const seed = spawnSync(process.execPath, ["e2e/seed.mjs", seedFile, ...(bulk ? ["bulk"] : [])], {
     cwd: ROOT,
     env: { ...process.env, DATABASE_URL },
     encoding: "utf8",
@@ -69,7 +69,12 @@ export async function startStack({ port = 3210, env = {} } = {}) {
       await browser.close();
       server.kill();
       await new Promise((r) => setTimeout(r, 500));
-      if (!process.env.E2E_KEEP) fs.rmSync(dir, { recursive: true, force: true });
+      // The server may still hold the SQLite file for a moment on Windows; cleanup is best-effort.
+      if (!process.env.E2E_KEEP) {
+        try {
+          fs.rmSync(dir, { recursive: true, force: true, maxRetries: 8, retryDelay: 250 });
+        } catch {}
+      }
     },
   };
 }
