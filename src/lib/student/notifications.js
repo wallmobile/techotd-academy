@@ -15,7 +15,7 @@ export async function getMyNotifications() {
   if (!user) return { notifications: [], unreadCount: 0 };
 
   return {
-    notifications: listNotificationsForUser(user.id),
-    unreadCount: countUnreadForUser(user.id),
+    notifications: await listNotificationsForUser(user.id),
+    unreadCount: await countUnreadForUser(user.id),
   };
 }

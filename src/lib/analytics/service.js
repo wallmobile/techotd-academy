@@ -40,14 +40,14 @@ export async function getAnalytics(input = {}) {
 
   if (allowed.includes("overview")) {
     report.overview = {
-      registrations: q.studentRegistrations(range),
-      totalStudents: q.totalStudents(),
+      registrations: await q.studentRegistrations(range),
+      totalStudents: await q.totalStudents(),
     };
   }
   if (allowed.includes("crm")) {
     const ctx = await getCrmContext();
     const scopeUserId = ctx?.scopeUserId ?? null;
-    const leads = q.leadsInRange(range, scopeUserId);
+    const leads = await q.leadsInRange(range, scopeUserId);
     report.crm = {
       scoped: Boolean(scopeUserId),
       total: leads.total,
@@ -56,21 +56,21 @@ export async function getAnalytics(input = {}) {
       verifiedConversions: leads.verifiedConversions,
       markedWithoutStudent: leads.markedWithoutStudent,
     };
-    report.dailyLeads = q.dailyLeads(range, scopeUserId);
+    report.dailyLeads = await q.dailyLeads(range, scopeUserId);
   }
   if (allowed.includes("enrollment")) {
-    report.enrollment = q.enrollmentStats(range);
-    report.dailyEnrollments = q.dailyEnrollments(range);
+    report.enrollment = await q.enrollmentStats(range);
+    report.dailyEnrollments = await q.dailyEnrollments(range);
   }
   if (allowed.includes("finance")) {
-    report.finance = q.financeStats(range, today);
-    report.dailyCollected = q.dailyCollected(range);
+    report.finance = await q.financeStats(range, today);
+    report.dailyCollected = await q.dailyCollected(range);
   }
   if (allowed.includes("certificates")) {
-    report.certificates = q.certificateStats(range);
+    report.certificates = await q.certificateStats(range);
   }
   if (allowed.includes("placement")) {
-    const p = q.placementStats(range, today);
+    const p = await q.placementStats(range, today);
     report.placement = {
       jobsPublished: p.jobsPublished,
       jobsOpen: p.jobsOpen,
@@ -79,7 +79,7 @@ export async function getAnalytics(input = {}) {
       verifiedPlacements: p.verifiedPlacements,
     };
   }
-  if (allowed.includes("overview")) report.dailyRegistrations = q.dailyRegistrations(range);
+  if (allowed.includes("overview")) report.dailyRegistrations = await q.dailyRegistrations(range);
   return report;
 }
 

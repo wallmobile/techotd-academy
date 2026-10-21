@@ -24,14 +24,14 @@ export async function markReadFormAction(formData) {
   const user = await getCurrentUser();
   if (!user) return;
   const id = formData.get("notificationId");
-  if (typeof id === "string") markNotificationRead(user.id, id);
+  if (typeof id === "string") await markNotificationRead(user.id, id);
   revalidateFeeds();
 }
 
 export async function markAllReadFormAction() {
   const user = await getCurrentUser();
   if (!user) return;
-  markAllNotificationsRead(user.id);
+  await markAllNotificationsRead(user.id);
   revalidateFeeds();
 }
 
@@ -43,7 +43,7 @@ export async function processQueueAction() {
 
 export async function retryFailedAction() {
   if (!(await getAdminContext())) return;
-  resetFailedDeliveries();
+  await resetFailedDeliveries();
   await processDeliveries({ limit: 25 });
   revalidatePath("/admin/notifications/deliveries");
 }
@@ -53,6 +53,6 @@ export async function retryFailedAction() {
 export async function setEmailPreferenceAction(formData) {
   const user = await getCurrentUser();
   if (!user) return;
-  setEmailNotificationsEnabled(user.id, formData.get("emailNotifications") === "on");
+  await setEmailNotificationsEnabled(user.id, formData.get("emailNotifications") === "on");
   revalidateFeeds();
 }

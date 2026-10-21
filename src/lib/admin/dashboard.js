@@ -17,7 +17,7 @@ export async function getAdminDashboardData() {
   const ctx = await getAdminContext();
   if (!ctx) return null;
 
-  const byRole = countUsersByRole();
+  const byRole = await countUsersByRole();
   const roleDistribution = ROLES.map((role) => ({ role, count: byRole[role] || 0 }));
   const total = roleDistribution.reduce((sum, r) => sum + r.count, 0);
   const students = byRole.STUDENT || 0;
@@ -25,7 +25,7 @@ export async function getAdminDashboardData() {
 
   let databaseOk = false;
   try {
-    databaseOk = pingDatabase();
+    databaseOk = await pingDatabase();
   } catch {
     databaseOk = false;
   }
@@ -37,12 +37,12 @@ export async function getAdminDashboardData() {
       students,
       trainers,
       staff: total - students - trainers,
-      usersWithActiveSession: countUsersWithActiveSession(),
+      usersWithActiveSession: await countUsersWithActiveSession(),
     },
     roleDistribution,
-    statusCounts: countUsersByStatus(),
-    enrollments: countEnrollmentsByStatus(),
-    recentUsers: listRecentUsers(5),
+    statusCounts: await countUsersByStatus(),
+    enrollments: await countEnrollmentsByStatus(),
+    recentUsers: await listRecentUsers(5),
     system: { databaseOk },
   };
 }

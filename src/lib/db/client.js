@@ -1,179 +1,261 @@
 import crypto from "node:crypto";
-import path from "node:path";
-import fs from "node:fs";
-import DatabaseConstructor from "better-sqlite3";
+import pg from "pg";
 import { parseDatabaseUrl } from "@/lib/config";
+import { SCHEMA_SQL } from "@/lib/db/schema";
 
-// --- Data-access boundary -------------------------------------------------
+// --- Data-access boundary (PostgreSQL) -----------------------------------------
 //
-// This is the ONE place that knows how to reach the database. Everything
-// else in the app goes through `src/lib/db/users.js` / `sessions.js` /
-// `passwordResetTokens.js`, never through this file's `Database` instance
-// directly. That keeps a future swap to PostgreSQL (a real relational
-// server) to this file plus the three data-access modules — no changes
-// required in Server Actions, pages, or components.
+// This is the ONE place that knows how to reach the database. Everything else goes
+// through the modules in src/lib/db/*.js and uses the small async API exported here:
 //
-// Why SQLite here: this project's build environment has no reachable
-// PostgreSQL server and no route to download Prisma's query-engine binary
-// (outbound network is allowlisted to package registries only), so a
-// server-based ORM could not be configured. better-sqlite3 is a
-// well-maintained, widely used, synchronous SQLite driver that needs no
-// external service and no binary download from a non-allowlisted host.
-// The schema (schema.sql) is written in portable SQL and the access layer
-// is thin specifically so this decision is reversible without an app
-// rewrite. See the Phase 7 report for the full evaluation.
+//   await db.all(sql, params)  -> rows[]
+//   await db.get(sql, params)  -> first row | undefined
+//   await db.run(sql, params)  -> { changes }   (rows affected)
+//   await db.tx(async (t) => { ... })  -> runs t.all/get/run inside ONE transaction
+//
+// SQL is written with positional placeholders. For readability two spellings are
+// accepted and translated to $1, $2, ...: `?` (params array) and `@name` (params
+// object). Values are ALWAYS bound parameters, never interpolated.
+//
+// Connection: DATABASE_URL, a PostgreSQL connection string (use your provider's
+// POOLED / serverless connection string, with sslmode=require, on Vercel-style
+// serverless hosting). The pool is created lazily and kept on globalThis so hot
+// reloads and duplicated bundles share it; nothing connects at import time, so
+// `next build` needs no database.
+//
+// Schema: applied automatically on first use per process by ensureSchema(), under a
+// transaction-scoped advisory lock, so many instances starting at once (serverless cold
+// starts, parallel build workers) serialize safely; a hash of the schema text is
+// stored so an already-current database costs one cheap query.
 
-function resolveDatabasePath() {
-  // Only SQLite is supported: an unsupported scheme (postgres://, mysql://...)
-  // is a misconfiguration and must fail loudly instead of being turned into
-  // an unexpected, empty database file (see src/lib/config.js).
+const { Pool, types } = pg;
+// bigint (COUNT, SUM of bigint money) and numeric come back as strings by default.
+types.setTypeParser(20, (v) => Number(v));
+types.setTypeParser(1700, (v) => Number(v));
+
+const SCHEMA_LOCK_KEY = 7240411; // arbitrary constant: "techotd schema"
+const g = globalThis;
+
+function createPool() {
   const parsed = parseDatabaseUrl(process.env.DATABASE_URL);
   if (!parsed.ok) throw new Error(parsed.error);
-  const rawPath = parsed.rawPath;
-  if (path.isAbsolute(rawPath)) return rawPath;
-
-  // Deliberately scoped to a literal "data" subfolder (rather than
-  // joining process.cwd() with an arbitrary dynamic path) so the bundler
-  // doesn't trace and bundle the entire project as a filesystem
-  // dependency of this module — see the Turbopack "Dynamic filesystem
-  // access" warning this avoids.
-  const fileName = path.basename(rawPath) || "app.db";
-  return path.join(process.cwd(), "data", fileName);
+  const pool = new Pool({
+    connectionString: parsed.url,
+    // Small on purpose: serverless platforms run many instances, each with its own
+    // pool, and managed databases cap total connections.
+    max: 5,
+    idleTimeoutMillis: 10_000,
+    allowExitOnIdle: true,
+    connectionTimeoutMillis: 15_000,
+  });
+  // A connection the server drops must never crash the process: idle ones are reported
+  // on the pool, checked-out ones on the client itself (the running query still rejects
+  // with the error, which is what callers see).
+  pool.on("error", () => {});
+  pool.on("connect", (client) => client.on("error", () => {}));
+  return pool;
 }
 
-// Additive, idempotent migrations for databases created before a column
-// existed (schema.sql's CREATE TABLE IF NOT EXISTS never alters an existing
-// table). Existing data is preserved; nothing is dropped or recreated.
-function migrate(db) {
-  // Phase 9.4: assignments.created_by (authoring trainer).
-  // Phase 10.10: per-user email opt-out (in-app notifications are unaffected).
-  addColumnIfMissing(db, "users", "email_notifications", "INTEGER NOT NULL DEFAULT 1");
-  addColumnIfMissing(db, "assignments", "created_by", "TEXT REFERENCES users (id) ON DELETE SET NULL");
-
-  // Phase 10.3: lead -> student conversion reference (leads table is from 10.2).
-  addColumnIfMissing(db, "leads", "converted_user_id", "TEXT REFERENCES users (id) ON DELETE SET NULL");
-  addColumnIfMissing(db, "leads", "converted_at", "TEXT");
-
-  // Phase 10.5: certificate issuance / verification / revocation columns.
-  addColumnIfMissing(db, "certificates", "enrollment_id", "TEXT");
-  addColumnIfMissing(db, "certificates", "verification_token", "TEXT");
-  addColumnIfMissing(db, "certificates", "issued_by", "TEXT REFERENCES users (id) ON DELETE SET NULL");
-  addColumnIfMissing(db, "certificates", "issuance_basis", "TEXT");
-  addColumnIfMissing(db, "certificates", "approval_note", "TEXT");
-  addColumnIfMissing(db, "certificates", "revoked_at", "TEXT");
-  addColumnIfMissing(db, "certificates", "revoked_reason", "TEXT");
-  addColumnIfMissing(db, "certificates", "revoked_by", "TEXT REFERENCES users (id) ON DELETE SET NULL");
-
-  // Any pre-existing certificate gets an unguessable verification token.
-  const untokened = db.prepare("SELECT id FROM certificates WHERE verification_token IS NULL").all();
-  const setToken = db.prepare("UPDATE certificates SET verification_token = ? WHERE id = ? AND verification_token IS NULL");
-  for (const row of untokened) setToken.run(crypto.randomBytes(18).toString("base64url"), row.id);
-
-  // Phase 10.7: in-app notification deep link + idempotency key.
-  addColumnIfMissing(db, "notifications", "link", "TEXT");
-  addColumnIfMissing(db, "notifications", "event_key", "TEXT");
-  db.exec(`
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_notifications_event_key
-      ON notifications (user_id, event_key) WHERE event_key IS NOT NULL;
-  `);
-
-  db.exec(`
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_certificates_verification_token
-      ON certificates (verification_token) WHERE verification_token IS NOT NULL;
-    CREATE INDEX IF NOT EXISTS idx_certificates_enrollment_id ON certificates (enrollment_id);
-  `);
-  // At most one ACTIVE certificate per student + course (issuance is also
-  // checked inside its transaction; this is the backstop).
-  try {
-    db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_certificates_one_active
-      ON certificates (student_id, course_slug) WHERE status = 'ACTIVE'`);
-  } catch {
-    // Pre-existing duplicate ACTIVE rows would block the index; the
-    // transactional check in issueCertificateTx still prevents new ones.
-  }
+export function getPool() {
+  g.__techotdPgPool ??= createPool();
+  return g.__techotdPgPool;
 }
 
-// `table`/`column`/`definition` are fixed literals from migrate() above,
-// never external input. Several processes can open the database at the same
-// moment (e.g. Next's parallel build workers), so losing the race to add the
-// column is expected and harmless: "duplicate column name" is swallowed.
-function addColumnIfMissing(db, table, column, definition) {
-  const columns = db.prepare(`PRAGMA table_info(${table})`).all();
-  if (columns.some((c) => c.name === column)) return;
+/** Closes the pool (tests, scripts). The next query creates a new one. */
+export async function closeDb() {
+  const pool = g.__techotdPgPool;
+  g.__techotdPgPool = undefined;
+  g.__techotdPgReady = undefined;
+  if (pool) await pool.end();
+}
+
+async function readSchemaHash(runner) {
+  const meta = await runner.query("SELECT to_regclass('public.schema_meta') AS t");
+  if (!meta.rows[0].t) return null;
+  const row = await runner.query("SELECT value FROM schema_meta WHERE key = 'schema_hash'");
+  return row.rows[0]?.value ?? null;
+}
+
+// Brings the schema up to date. Safe with many instances starting at once AND behind a
+// transaction-pooling proxy (PgBouncer / Neon's pooled endpoint): the only lock is a
+// transaction-scoped advisory lock taken inside one transaction, which stays on one
+// server connection. (Session-level advisory locks would not.) The common case - the
+// database is already current - is a read-only check with no lock at all.
+async function ensureSchema(pool) {
+  const hash = crypto.createHash("sha256").update(SCHEMA_SQL).digest("hex").slice(0, 16);
+  if ((await readSchemaHash(pool)) === hash) return;
+  const client = await pool.connect();
   try {
-    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+    await client.query("BEGIN");
+    await client.query("SELECT pg_advisory_xact_lock($1)", [SCHEMA_LOCK_KEY]);
+    if ((await readSchemaHash(client)) !== hash) {
+      await client.query(SCHEMA_SQL);
+      await client.query("CREATE TABLE IF NOT EXISTS schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
+      await client.query("INSERT INTO schema_meta (key, value) VALUES ('schema_hash', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value", [hash]);
+    }
+    await client.query("COMMIT");
   } catch (error) {
-    if (!/duplicate column name/i.test(String(error?.message))) throw error;
+    await client.query("ROLLBACK").catch(() => {});
+    throw error;
+  } finally {
+    client.release();
   }
+}
+
+/** Resolves once the schema is in place (cached; a failure is retried on the next call). */
+export function ready() {
+  if (!g.__techotdPgReady) {
+    const promise = ensureSchema(getPool());
+    g.__techotdPgReady = promise;
+    promise.catch(() => {
+      if (g.__techotdPgReady === promise) g.__techotdPgReady = undefined;
+    });
+  }
+  return g.__techotdPgReady;
 }
 
 /**
- * Creates the schema and applies the additive migrations as ONE IMMEDIATE
- * transaction (SQLite DDL is transactional): either everything is applied or,
- * if any statement fails, nothing is - a failed start can't leave a half
- * migrated database behind. IMMEDIATE also serializes processes that start at
- * the same moment (e.g. Next's parallel build workers).
+ * Translates `?` (array params) or `@name` (object params) into $1..$n.
+ * Quoted strings, quoted identifiers and comments are left untouched.
  */
-// Several processes can open a brand-new database file at the same instant
-// (`next build` runs ~13 workers). Switching the file to WAL and creating the
-// schema then collide: SQLite answers SQLITE_BUSY / SQLITE_LOCKED (or, on
-// Windows, an I/O error) WITHOUT waiting, because a journal-mode change can't
-// use the busy handler. These errors are transient by nature, so retry a
-// bounded number of times with jitter; anything else, or a persistent
-// failure, is thrown unchanged.
-function isTransientLockError(error) {
-  const code = String(error?.code || "");
-  return code === "SQLITE_BUSY" || code === "SQLITE_LOCKED" || code.startsWith("SQLITE_IOERR");
-}
-
-function sleepSync(ms) {
-  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
-}
-
-export function withLockRetry(fn, { attempts = 80 } = {}) {
-  for (let attempt = 1; ; attempt += 1) {
-    try {
-      return fn();
-    } catch (error) {
-      if (!isTransientLockError(error) || attempt >= attempts) throw error;
-      sleepSync(15 + Math.floor(Math.random() * 85));
+export function toPositional(sql, params = []) {
+  const values = [];
+  const named = !Array.isArray(params) && params !== null && typeof params === "object";
+  const index = new Map();
+  let out = "";
+  let i = 0;
+  while (i < sql.length) {
+    const ch = sql[i];
+    const next = sql[i + 1];
+    if (ch === "'" || ch === '"') {
+      let j = i + 1;
+      while (j < sql.length) {
+        if (sql[j] === ch) {
+          if (sql[j + 1] === ch) j += 2;
+          else break;
+        } else j += 1;
+      }
+      out += sql.slice(i, j + 1);
+      i = j + 1;
+    } else if (ch === "-" && next === "-") {
+      const end = sql.indexOf("\n", i);
+      const stop = end === -1 ? sql.length : end;
+      out += sql.slice(i, stop);
+      i = stop;
+    } else if (ch === "/" && next === "*") {
+      const end = sql.indexOf("*/", i + 2);
+      const stop = end === -1 ? sql.length : end + 2;
+      out += sql.slice(i, stop);
+      i = stop;
+    } else if (ch === "?" && !named) {
+      values.push(params[values.length]);
+      out += `$${values.length}`;
+      i += 1;
+    } else if (ch === "@" && named && /[A-Za-z_]/.test(next || "")) {
+      let j = i + 1;
+      while (j < sql.length && /[A-Za-z0-9_]/.test(sql[j])) j += 1;
+      const name = sql.slice(i + 1, j);
+      if (!(name in params)) throw new Error(`Missing SQL parameter @${name}`);
+      if (!index.has(name)) {
+        values.push(params[name]);
+        index.set(name, values.length);
+      }
+      out += `$${index.get(name)}`;
+      i = j;
+    } else {
+      out += ch;
+      i += 1;
     }
   }
+  if (!named && values.length !== params.length) throw new Error(`SQL has ${values.length} placeholders but ${params.length} values were given`);
+  // undefined is not a valid parameter value: treat it as NULL
+  return { text: out, values: values.map((v) => (v === undefined ? null : v)) };
 }
 
-export function initializeDatabase(db, schemaSql) {
-  withLockRetry(() =>
-    db
-      .transaction(() => {
-        db.exec(schemaSql);
-        migrate(db);
-      })
-      .immediate()
-  );
+function api(executor) {
+  const exec = async (sql, params) => {
+    const { text, values } = toPositional(sql, params);
+    return executor.query(text, values);
+  };
+  return {
+    async all(sql, params = []) {
+      return (await exec(sql, params)).rows;
+    },
+    async get(sql, params = []) {
+      return (await exec(sql, params)).rows[0];
+    },
+    async run(sql, params = []) {
+      const r = await exec(sql, params);
+      return { changes: r.rowCount ?? 0 };
+    },
+    /** Several statements without parameters (DDL / maintenance). */
+    async exec(sql) {
+      await executor.query(sql);
+    },
+  };
 }
 
-function createConnection() {
-  const dbPath = resolveDatabasePath();
-  fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+const RETRYABLE = new Set(["40001", "40P01"]); // serialization failure, deadlock detected
 
-  const db = withLockRetry(() => new DatabaseConstructor(dbPath));
-  withLockRetry(() => db.pragma("journal_mode = WAL"));
-  db.pragma("foreign_keys = ON");
+// A pooled connection can die while a serverless instance is frozen, or when a
+// serverless database scales to zero and back. The pool replaces dead connections,
+// but the request that picked one up first would fail. We retry exactly once, and
+// only where that cannot repeat a write: plain reads, or a transaction whose BEGIN
+// never reached the server.
+// 57P01-57P03: the server is shutting the connection down (Neon sends 57P01 to idle
+// connections when it suspends); 08xxx: connection exceptions.
+const DEAD_CONNECTION_CODES = new Set(["57P01", "57P02", "57P03", "08000", "08003", "08006"]);
+const isDeadConnection = (error) =>
+  DEAD_CONNECTION_CODES.has(error?.code) || /not queryable|Connection terminated|ECONNRESET|EPIPE|ETIMEDOUT/i.test(`${error?.message ?? ""} ${error?.code ?? ""}`);
+const isRead = (text) => /^\s*(SELECT|WITH)\b/i.test(text);
 
-  const schemaPath = path.join(process.cwd(), "src", "lib", "db", "schema.sql");
-  const schema = fs.readFileSync(schemaPath, "utf-8");
-  initializeDatabase(db, schema);
+const pooled = {
+  query: async (text, values) => {
+    await ready();
+    try {
+      return await getPool().query(text, values);
+    } catch (error) {
+      if (isDeadConnection(error) && isRead(text)) return getPool().query(text, values);
+      throw error;
+    }
+  },
+};
 
-  return db;
-}
+export const db = {
+  ...api(pooled),
+  /**
+   * Runs fn(t) in ONE transaction (READ COMMITTED). The function may be re-run
+   * if PostgreSQL reports a deadlock / serialization failure, so keep side
+   * effects (emails, notifications) outside it. Use `SELECT ... FOR UPDATE` on
+   * the parent row (or t.lock(key), an advisory lock) where two requests must
+   * not interleave.
+   */
+  async tx(fn) {
+    await ready();
+    for (let attempt = 1; ; attempt += 1) {
+      const client = await getPool().connect();
+      let begun = false;
+      let broken = false;
+      try {
+        await client.query("BEGIN");
+        begun = true;
+        const result = await fn({ ...api(client), lock: (key) => client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [String(key)]) });
+        await client.query("COMMIT");
+        return result;
+      } catch (error) {
+        broken = isDeadConnection(error);
+        if (!broken) await client.query("ROLLBACK").catch(() => {});
+        if (RETRYABLE.has(error?.code) && attempt < 4) continue;
+        if (broken && !begun && attempt < 2) continue; // nothing ran: safe to try a fresh connection
+        throw error;
+      } finally {
+        client.release(broken); // a dead connection is destroyed, not returned to the pool
+      }
+    }
+  },
+};
 
-// Reused across hot-reloads in dev (mirrors the standard Next.js
-// "globalThis singleton" pattern used for database clients) so we don't
-// open a new file handle on every request.
-const globalForDb = globalThis;
-
-export const db = globalForDb.__techotdDb || createConnection();
-
-if (process.env.NODE_ENV !== "production") {
-  globalForDb.__techotdDb = db;
-}
+// PostgreSQL error classes the application reacts to.
+export const isUniqueViolation = (error) => error?.code === "23505";
+export const isForeignKeyViolation = (error) => error?.code === "23503" || error?.code === "23001"; // 23001 = ON DELETE RESTRICT
+export const isCheckViolation = (error) => error?.code === "23514";

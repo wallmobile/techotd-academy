@@ -21,15 +21,15 @@ export async function getMyCourseEnrollments() {
   const user = await getCurrentUser();
   if (!user || user.role !== "STUDENT") return [];
 
-  const profile = getOrCreateStudentProfile(user.id);
+  const profile = await getOrCreateStudentProfile(user.id);
 
-  return listCourseEnrollmentsForStudent(profile.id)
+  return (await Promise.all((await listCourseEnrollmentsForStudent(profile.id))
     .filter((enrollment) => enrollment.status !== "CANCELLED")
-    .map((enrollment) => {
-      const course = getCourse(enrollment.courseSlug);
+    .map(async (enrollment) => {
+      const course = await getCourse(enrollment.courseSlug);
       if (!course) return { ...enrollment, course: null, progress: 0 };
-      return { ...enrollment, course, progress: computeCourseProgress(profile.id, course).percent };
-    })
+      return { ...enrollment, course, progress: (await computeCourseProgress(profile.id, course)).percent };
+    })))
     .filter((enrollment) => Boolean(enrollment.course));
 }
 
@@ -48,7 +48,7 @@ export async function getMyCourseEnrollments() {
 // needs, so the /learn route doesn't have to re-derive enrollment state a
 // second time.
 export async function getStudentCourseDetail(slug) {
-  const course = getCourse(slug);
+  const course = await getCourse(slug);
   if (!course) return null;
 
   const user = await getCurrentUser();
@@ -56,20 +56,20 @@ export async function getStudentCourseDetail(slug) {
     return { course, enrollment: null, batchEnrollment: null, progress: 0, progressDetail: null };
   }
 
-  const profile = getOrCreateStudentProfile(user.id);
+  const profile = await getOrCreateStudentProfile(user.id);
 
   const enrollment =
-    listCourseEnrollmentsForStudent(profile.id).find(
+    (await listCourseEnrollmentsForStudent(profile.id)).find(
       (e) => e.courseSlug === course.slug && e.status !== "CANCELLED"
     ) || null;
 
   const batchEnrollment =
-    listBatchEnrollmentsForStudent(profile.id)
+    (await Promise.all((await listBatchEnrollmentsForStudent(profile.id))
       .filter((e) => e.status !== "CANCELLED")
-      .map((e) => ({ ...e, batch: getBatch(e.batchId) }))
+      .map(async (e) => ({ ...e, batch: await getBatch(e.batchId) }))))
       .find((e) => e.batch && e.batch.courseSlug === course.slug) || null;
 
-  const progressDetail = enrollment ? computeCourseProgress(profile.id, course) : null;
+  const progressDetail = enrollment ? await computeCourseProgress(profile.id, course) : null;
 
   return {
     course,

@@ -21,8 +21,8 @@ const STATUS_VARIANT = { QUEUED: "warning", SENDING: "warning", SENT: "success",
 export default async function AdminDeliveriesPage() {
   // ADMIN / SUPER_ADMIN only (operator view of outbound delivery).
   const { user } = await requireAdminContext();
-  const counts = deliveryStatusCounts();
-  const recent = listRecentDeliveries(50);
+  const counts = await deliveryStatusCounts();
+  const recent = await listRecentDeliveries(50);
   const emailOn = isEmailConfigured();
   const wa = whatsAppStatus();
 

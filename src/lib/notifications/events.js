@@ -14,8 +14,8 @@ const ENROLLMENT_STATUS_COPY = {
 
 const fill = (text, vars) => text.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? "");
 
-export function notifyEnrolled({ userId, enrollmentId, courseTitle, stamp = "" }) {
-  return safeNotify({
+export async function notifyEnrolled({ userId, enrollmentId, courseTitle, stamp = "" }) {
+  return await safeNotify({
     userId,
     type: "ENROLLMENT",
     title: "You've been enrolled",
@@ -25,10 +25,10 @@ export function notifyEnrolled({ userId, enrollmentId, courseTitle, stamp = "" }
   });
 }
 
-export function notifyEnrollmentStatus({ userId, enrollmentId, status, courseTitle, stamp = "" }) {
+export async function notifyEnrollmentStatus({ userId, enrollmentId, status, courseTitle, stamp = "" }) {
   const copy = ENROLLMENT_STATUS_COPY[status];
   if (!copy) return null;
-  return safeNotify({
+  return await safeNotify({
     userId,
     type: "ENROLLMENT",
     title: copy[0],
@@ -38,8 +38,8 @@ export function notifyEnrollmentStatus({ userId, enrollmentId, status, courseTit
   });
 }
 
-export function notifyFeeAssigned({ userId, feePlanId, courseTitle }) {
-  return safeNotify({
+export async function notifyFeeAssigned({ userId, feePlanId, courseTitle }) {
+  return await safeNotify({
     userId,
     type: "FEE",
     title: "A fee has been assigned",
@@ -49,8 +49,8 @@ export function notifyFeeAssigned({ userId, feePlanId, courseTitle }) {
   });
 }
 
-export function notifyPaymentRecorded({ userId, paymentId }) {
-  return safeNotify({
+export async function notifyPaymentRecorded({ userId, paymentId }) {
+  return await safeNotify({
     userId,
     type: "FEE",
     title: "Payment recorded",
@@ -60,8 +60,8 @@ export function notifyPaymentRecorded({ userId, paymentId }) {
   });
 }
 
-export function notifyPaymentVoided({ userId, paymentId }) {
-  return safeNotify({
+export async function notifyPaymentVoided({ userId, paymentId }) {
+  return await safeNotify({
     userId,
     type: "FEE",
     title: "A payment entry was voided",
@@ -71,8 +71,8 @@ export function notifyPaymentVoided({ userId, paymentId }) {
   });
 }
 
-export function notifyCertificateIssued({ userId, certificateId, courseTitle }) {
-  return safeNotify({
+export async function notifyCertificateIssued({ userId, certificateId, courseTitle }) {
+  return await safeNotify({
     userId,
     type: "CERTIFICATE",
     title: "Your certificate is ready",
@@ -82,8 +82,8 @@ export function notifyCertificateIssued({ userId, certificateId, courseTitle }) 
   });
 }
 
-export function notifyCertificateRevoked({ userId, certificateId, courseTitle }) {
-  return safeNotify({
+export async function notifyCertificateRevoked({ userId, certificateId, courseTitle }) {
+  return await safeNotify({
     userId,
     type: "CERTIFICATE",
     title: "A certificate was revoked",
@@ -93,8 +93,8 @@ export function notifyCertificateRevoked({ userId, certificateId, courseTitle })
   });
 }
 
-export function notifyApplicationStatus({ userId, applicationId, jobTitle, statusLabel, status }) {
-  return safeNotify({
+export async function notifyApplicationStatus({ userId, applicationId, jobTitle, statusLabel, status }) {
+  return await safeNotify({
     userId,
     type: "PLACEMENT",
     title: "Application update",
@@ -104,8 +104,8 @@ export function notifyApplicationStatus({ userId, applicationId, jobTitle, statu
   });
 }
 
-export function notifyPlacementConfirmed({ userId, applicationId, jobTitle }) {
-  return safeNotify({
+export async function notifyPlacementConfirmed({ userId, applicationId, jobTitle }) {
+  return await safeNotify({
     userId,
     type: "PLACEMENT",
     title: "Placement confirmed",
@@ -115,8 +115,8 @@ export function notifyPlacementConfirmed({ userId, applicationId, jobTitle }) {
   });
 }
 
-export function notifyLeadAssigned({ userId, leadId, stamp = "" }) {
-  return safeNotify({
+export async function notifyLeadAssigned({ userId, leadId, stamp = "" }) {
+  return await safeNotify({
     userId,
     type: "CRM",
     title: "A lead was assigned to you",

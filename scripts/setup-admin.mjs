@@ -1,10 +1,11 @@
 #!/usr/bin/env node
-// Development-only first-admin bootstrap.
+// First-admin bootstrap, run by hand from your own machine (never by the deployed app).
 //
 // Admin roles can never be self-registered: the public /register form always
 // creates a STUDENT (src/lib/auth/actions.js) and that is NOT changed here.
 // This script is the out-of-band way to create the FIRST SUPER_ADMIN (or
-// ADMIN) on a local database. It calls the app's own createUser() /
+// ADMIN) in the database that DATABASE_URL points at (your local PostgreSQL, or the
+// hosted one when you deliberately point it there - see docs/STAGING.md). It calls the app's own createUser() /
 // hashPassword(), so hashing and storage are identical to normal accounts; it
 // never touches existing data and never runs automatically.
 //
@@ -50,6 +51,8 @@ function parseArgs(argv) {
   return args;
 }
 
+let closeAtEnd = null;
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const email = (args.email || "").trim().toLowerCase();
@@ -70,9 +73,11 @@ async function main() {
   const name = (args.name || "Administrator").trim().slice(0, 100);
 
   const { findUserByEmailInternal, createUser } = await import(srcUrl("src/lib/db/users.js"));
+  const { closeDb } = await import(srcUrl("src/lib/db/client.js"));
+  closeAtEnd = closeDb;
   const { hashPassword } = await import(srcUrl("src/lib/auth/password.js"));
 
-  const existing = findUserByEmailInternal(email);
+  const existing = await findUserByEmailInternal(email);
   if (existing) {
     if (existing.role !== role) {
       console.error(
@@ -86,7 +91,7 @@ async function main() {
 
   const password = supplied || crypto.randomBytes(18).toString("base64url");
   const passwordHash = await hashPassword(password);
-  const user = createUser({ name, email, phone: null, passwordHash, role });
+  const user = await createUser({ name, email, phone: null, passwordHash, role });
 
   console.log(`Created ${role} account: ${user.email}`);
   console.log("\n--- Local admin login ---");
@@ -100,7 +105,11 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error("setup:admin failed:", error?.message || error);
-  process.exit(1);
-});
+main()
+  .then(async () => {
+    if (closeAtEnd) await closeAtEnd();
+  })
+  .catch((error) => {
+    console.error("setup:admin failed:", error?.message || error);
+    process.exit(1);
+  });

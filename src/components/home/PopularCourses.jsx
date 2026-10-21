@@ -5,9 +5,9 @@ import { listCourses, listBatches } from "@/lib/catalog";
 // Only fields that exist in the data are surfaced: project/module counts
 // come from the course catalog and "next batch" from the sample batch list.
 // No learner counts or scholarship claims are shown because no such data exists.
-function getSlides() {
-  const batches = listBatches({ publicOnly: true });
-  return [...listCourses({ publishedOnly: true })]
+async function getSlides() {
+  const batches = await listBatches({ publicOnly: true });
+  return [...await listCourses({ publishedOnly: true })]
   .sort((a, b) => Number(b.popular) - Number(a.popular))
   .map((course) => {
     const batch = batches.find((item) => item.courseSlug === course.slug);
@@ -27,8 +27,8 @@ function getSlides() {
   });
 }
 
-export function PopularCourses() {
-  const slides = getSlides();
+export async function PopularCourses() {
+  const slides = await getSlides();
   return (
     <Section tone="surface" className="bg-gradient-to-b from-surface to-primary/10">
       <div className="mx-auto mb-10 flex max-w-3xl flex-col items-center gap-4 text-center">

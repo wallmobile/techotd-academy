@@ -45,12 +45,12 @@ const icons = {
   ),
 };
 
-export function UpcomingBatches() {
-  const upcoming = listBatches({ publicOnly: true })
-    .map((batch) => {
-      const course = getCourse(batch.courseSlug);
+export async function UpcomingBatches() {
+  const upcoming = (await Promise.all((await listBatches({ publicOnly: true }))
+    .map(async (batch) => {
+      const course = await getCourse(batch.courseSlug);
       return course ? { ...batch, course } : null;
-    })
+    })))
     .filter(Boolean)
     .slice(0, 3);
 

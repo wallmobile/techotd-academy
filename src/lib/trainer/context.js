@@ -17,7 +17,7 @@ export async function getTrainerContext() {
   const user = await getCurrentUser();
   if (!user || user.role !== "TRAINER") return null;
 
-  const batchIds = listBatchIdsForTrainer(user.id);
+  const batchIds = await listBatchIdsForTrainer(user.id);
 
   return { user, batchIds };
 }
@@ -27,15 +27,15 @@ export async function getTrainerContext() {
 // assignment row whose batch id no longer exists in the catalog is
 // dropped rather than shown with missing details — same discipline as
 // src/lib/student/batches.js's getMyBatchEnrollments().
-export function enrichAssignedBatches(batchIds) {
-  return batchIds
-    .map((batchId) => {
-      const batch = getBatch(batchId);
+export async function enrichAssignedBatches(batchIds) {
+  return (await Promise.all(batchIds
+    .map(async (batchId) => {
+      const batch = await getBatch(batchId);
       if (!batch) return null;
-      const course = getCourse(batch.courseSlug);
+      const course = await getCourse(batch.courseSlug);
       if (!course) return null;
       return { batch, course };
-    })
+    })))
     .filter(Boolean);
 }
 
@@ -46,6 +46,6 @@ export function enrichAssignedBatches(batchIds) {
 export async function requireTrainerBatchOwnership(batchId) {
   const ctx = await getTrainerContext();
   if (!ctx) return null;
-  if (!isBatchAssignedToTrainer(ctx.user.id, batchId)) return null;
+  if (!await isBatchAssignedToTrainer(ctx.user.id, batchId)) return null;
   return ctx;
 }

@@ -93,45 +93,45 @@ export async function createJob(input) {
   if (!ctx) return fail("forbidden");
   const parsed = validateJobInput(input);
   if (parsed.error) return fail(parsed.error);
-  return { ok: true, jobId: createJobRow(parsed.value, ctx.user.id) };
+  return { ok: true, jobId: await createJobRow(parsed.value, ctx.user.id) };
 }
 
 export async function updateJob(jobId, input) {
   const ctx = await getPlacementContext();
   if (!ctx) return fail("forbidden");
-  if (!getJobById(jobId)) return fail("not_found");
+  if (!await getJobById(jobId)) return fail("not_found");
   const parsed = validateJobInput(input);
   if (parsed.error) return fail(parsed.error);
-  return updateJobRow(jobId, parsed.value, ctx.user.id) ? { ok: true, jobId } : fail("not_found");
+  return await updateJobRow(jobId, parsed.value, ctx.user.id) ? { ok: true, jobId } : fail("not_found");
 }
 
 export async function setJobStatus(jobId, status) {
   const ctx = await getPlacementContext();
   if (!ctx) return fail("forbidden");
   if (!JOB_STATUSES.includes(status)) return fail("status_invalid");
-  if (!getJobById(jobId)) return fail("not_found");
-  return setJobStatusRow(jobId, status, ctx.user.id) ? { ok: true, jobId } : fail("not_found");
+  if (!await getJobById(jobId)) return fail("not_found");
+  return await setJobStatusRow(jobId, status, ctx.user.id) ? { ok: true, jobId } : fail("not_found");
 }
 
 export async function getJobsPage({ q, status, sort, page }) {
   if (!(await getPlacementContext())) return { rows: [], page: 1, totalPages: 1, pageSize: ADMIN_JOBS_PAGE_SIZE, total: 0 };
-  const probe = listJobsForStaff({ q, status, sort, limit: 1, offset: 0 });
+  const probe = await listJobsForStaff({ q, status, sort, limit: 1, offset: 0 });
   const totalPages = Math.max(1, Math.ceil(probe.total / ADMIN_JOBS_PAGE_SIZE));
   const current = Math.min(Math.max(1, page || 1), totalPages);
-  const { rows, total } = listJobsForStaff({ q, status, sort, limit: ADMIN_JOBS_PAGE_SIZE, offset: (current - 1) * ADMIN_JOBS_PAGE_SIZE });
+  const { rows, total } = await listJobsForStaff({ q, status, sort, limit: ADMIN_JOBS_PAGE_SIZE, offset: (current - 1) * ADMIN_JOBS_PAGE_SIZE });
   return { rows, page: current, totalPages, pageSize: ADMIN_JOBS_PAGE_SIZE, total };
 }
 
 export async function getJobDetail(jobId) {
   if (!(await getPlacementContext())) return null;
-  const job = getJobById(jobId);
+  const job = await getJobById(jobId);
   if (!job) return null;
-  return { job, applications: listApplicationsForJob(job.id), history: listAuditForEntity("job", job.id) };
+  return { job, applications: await listApplicationsForJob(job.id), history: await listAuditForEntity("job", job.id) };
 }
 
 export async function getPlacementSummary() {
   if (!(await getPlacementContext())) return null;
-  return placementSummary();
+  return await placementSummary();
 }
 
 export async function updateApplicationStatus({ applicationId, status, notes }) {
@@ -140,10 +140,10 @@ export async function updateApplicationStatus({ applicationId, status, notes }) 
   if (!APPLICATION_STATUSES.includes(status) || status === "WITHDRAWN") return fail("status_invalid");
   const note = notes === undefined || notes === null ? null : clean(notes, MAX.notes);
   if (note === null && typeof notes === "string" && notes.trim().length > MAX.notes) return fail("notes_long");
-  const before = getApplicationRow(applicationId);
+  const before = await getApplicationRow(applicationId);
   if (!before) return fail("not_found");
 
-  const result = setApplicationStatusTx({
+  const result = await setApplicationStatusTx({
     applicationId,
     status,
     notes: typeof notes === "string" ? note : null,
@@ -155,7 +155,7 @@ export async function updateApplicationStatus({ applicationId, status, notes }) 
     await notifyApplicationStatus({
       userId: before.student_user_id,
       applicationId,
-      jobTitle: getJobById(result.jobId)?.title ?? "the job",
+      jobTitle: (await getJobById(result.jobId))?.title ?? "the job",
       status,
       statusLabel: APPLICATION_STATUS_LABELS[status] || status,
     });
@@ -170,14 +170,14 @@ export async function confirmPlacement({ applicationId, note }) {
   if (!ctx) return fail("forbidden");
   const text = typeof note === "string" ? note.trim() : "";
   if (text.length > MAX.notes) return fail("notes_long");
-  const app = getApplicationRow(applicationId);
-  const result = confirmPlacementTx({ applicationId, note: text, actorUserId: ctx.user.id });
+  const app = await getApplicationRow(applicationId);
+  const result = await confirmPlacementTx({ applicationId, note: text, actorUserId: ctx.user.id });
   if (!result.ok) return fail(result.reason);
   if (app) {
     await notifyPlacementConfirmed({
       userId: app.student_user_id,
       applicationId,
-      jobTitle: getJobById(result.jobId)?.title ?? "the job",
+      jobTitle: (await getJobById(result.jobId))?.title ?? "the job",
     });
   }
   return { ok: true, jobId: result.jobId };

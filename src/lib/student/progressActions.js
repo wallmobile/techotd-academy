@@ -34,11 +34,11 @@ async function authorizeLessonMutation(courseSlug, lessonId) {
   const user = await getCurrentUser();
   if (!user || user.role !== "STUDENT") return null;
 
-  const course = getCourse(courseSlug);
+  const course = await getCourse(courseSlug);
   if (!course) return null;
 
-  const profile = getOrCreateStudentProfile(user.id);
-  const enrollment = listCourseEnrollmentsForStudent(profile.id).find(
+  const profile = await getOrCreateStudentProfile(user.id);
+  const enrollment = (await listCourseEnrollmentsForStudent(profile.id)).find(
     (e) => e.courseSlug === courseSlug && ["ACTIVE", "COMPLETED"].includes(e.status)
   );
   if (!enrollment) return null;
@@ -60,7 +60,7 @@ export async function recordLessonAccessAction(courseSlug, lessonId) {
   const ctx = await authorizeLessonMutation(courseSlug, lessonId);
   if (!ctx) return { ok: false };
 
-  recordLessonAccess(ctx.profile.id, courseSlug, ctx.lesson.moduleIndex, ctx.lesson.itemIndex);
+  await recordLessonAccess(ctx.profile.id, courseSlug, ctx.lesson.moduleIndex, ctx.lesson.itemIndex);
   return { ok: true };
 }
 
@@ -78,9 +78,9 @@ export async function markLessonCompleteAction(courseSlug, lessonId) {
   const ctx = await authorizeLessonMutation(courseSlug, lessonId);
   if (!ctx) return { ok: false };
 
-  markLessonComplete(ctx.profile.id, courseSlug, ctx.lesson.moduleIndex, ctx.lesson.itemIndex);
+  await markLessonComplete(ctx.profile.id, courseSlug, ctx.lesson.moduleIndex, ctx.lesson.itemIndex);
 
-  const progress = computeCourseProgress(ctx.profile.id, ctx.course);
+  const progress = await computeCourseProgress(ctx.profile.id, ctx.course);
   return {
     ok: true,
     percent: progress.percent,

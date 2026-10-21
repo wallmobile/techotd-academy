@@ -69,11 +69,11 @@ function validDate(value) {
   return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === value;
 }
 
-function describePlan(plan) {
-  const batch = getBatch(plan.batchId);
+async function describePlan(plan) {
+  const batch = await getBatch(plan.batchId);
   return {
     ...plan,
-    courseTitle: getCourse(plan.courseSlug)?.title ?? plan.courseSlug,
+    courseTitle: (await getCourse(plan.courseSlug))?.title ?? plan.courseSlug,
     batchLabel: batch ? `${batch.mode} — ${batch.startDate}` : plan.batchId,
   };
 }
@@ -81,55 +81,55 @@ function describePlan(plan) {
 // --- reads -----------------------------------------------------------------
 export async function getFeesPage({ q, status, course, sort, page }) {
   if (!(await getFinanceContext())) return { rows: [], page: 1, totalPages: 1, pageSize: FEES_PAGE_SIZE, total: 0 };
-  const probe = listFeePlans({ q, status, course, sort, limit: 1, offset: 0 });
+  const probe = await listFeePlans({ q, status, course, sort, limit: 1, offset: 0 });
   const totalPages = Math.max(1, Math.ceil(probe.total / FEES_PAGE_SIZE));
   const current = Math.min(Math.max(1, page || 1), totalPages);
-  const { rows, total } = listFeePlans({ q, status, course, sort, limit: FEES_PAGE_SIZE, offset: (current - 1) * FEES_PAGE_SIZE });
-  return { rows: rows.map(describePlan), page: current, totalPages, pageSize: FEES_PAGE_SIZE, total };
+  const { rows, total } = await listFeePlans({ q, status, course, sort, limit: FEES_PAGE_SIZE, offset: (current - 1) * FEES_PAGE_SIZE });
+  return { rows: await Promise.all(rows.map(describePlan)), page: current, totalPages, pageSize: FEES_PAGE_SIZE, total };
 }
 
 export async function getFeeDetail(feePlanId) {
   if (!(await getFinanceContext())) return null;
-  const plan = getFeePlanById(feePlanId);
+  const plan = await getFeePlanById(feePlanId);
   if (!plan) return null;
   return {
-    plan: describePlan(plan),
-    payments: listPaymentsForPlan(plan.id),
-    history: listAuditForFeePlan(plan.id),
+    plan: await describePlan(plan),
+    payments: await listPaymentsForPlan(plan.id),
+    history: await listAuditForFeePlan(plan.id),
   };
 }
 
 export async function getFeeForEnrollment(enrollmentId) {
   if (!(await getFinanceContext())) return null;
-  const plan = getFeePlanByEnrollmentId(enrollmentId);
-  return plan ? describePlan(plan) : null;
+  const plan = await getFeePlanByEnrollmentId(enrollmentId);
+  return plan ? await describePlan(plan) : null;
 }
 
 export async function getFeeSummary() {
   if (!(await getFinanceContext())) return null;
-  return feeTotals();
+  return await feeTotals();
 }
 
 export async function getFeeFormData({ enrollmentId, query }) {
   if (!(await getFinanceContext())) return null;
-  const enrollment = enrollmentId ? getEnrollmentForFee(enrollmentId) : null;
+  const enrollment = enrollmentId ? await getEnrollmentForFee(enrollmentId) : null;
   const usable = enrollment && enrollment.status !== "CANCELLED" ? enrollment : null;
-  const batch = usable ? getBatch(usable.batchId) : null;
+  const batch = usable ? await getBatch(usable.batchId) : null;
   return {
     enrollment: usable
       ? {
           ...usable,
-          courseTitle: batch ? getCourse(batch.courseSlug)?.title ?? batch.courseSlug : "Unknown course",
+          courseTitle: batch ? (await getCourse(batch.courseSlug))?.title ?? batch.courseSlug : "Unknown course",
           batchLabel: batch ? `${batch.mode} — ${batch.startDate}` : usable.batchId,
-          existingFeeId: getFeePlanByEnrollmentId(usable.id)?.id ?? null,
+          existingFeeId: (await getFeePlanByEnrollmentId(usable.id))?.id ?? null,
         }
       : null,
     candidates: usable
       ? []
-      : searchEnrollmentsWithoutFee(query || "").map((c) => {
-          const b = getBatch(c.batchId);
-          return { ...c, courseTitle: b ? getCourse(b.courseSlug)?.title ?? b.courseSlug : c.batchId };
-        }),
+      : await Promise.all((await searchEnrollmentsWithoutFee(query || "")).map(async (c) => {
+          const b = await getBatch(c.batchId);
+          return { ...c, courseTitle: b ? (await getCourse(b.courseSlug))?.title ?? b.courseSlug : c.batchId };
+        })),
     currencies: SUPPORTED_CURRENCIES,
     defaultCurrency: DEFAULT_CURRENCY,
   };
@@ -137,10 +137,10 @@ export async function getFeeFormData({ enrollmentId, query }) {
 
 export async function getPaymentForReceipt(paymentId) {
   if (!(await getFinanceContext())) return null;
-  const payment = getPaymentById(paymentId);
+  const payment = await getPaymentById(paymentId);
   if (!payment || payment.status === "VOIDED") return null;
-  const plan = getFeePlanById(payment.feePlanId);
-  return plan ? { payment, plan: describePlan(plan) } : null;
+  const plan = await getFeePlanById(payment.feePlanId);
+  return plan ? { payment, plan: await describePlan(plan) } : null;
 }
 
 // --- mutations -------------------------------------------------------------
@@ -163,7 +163,7 @@ export async function assignFee({ enrollmentId, currency, total, discount, dueDa
   const ctx = await getFinanceContext();
   if (!ctx) return fail("forbidden");
 
-  const enrollment = getEnrollmentForFee(enrollmentId);
+  const enrollment = await getEnrollmentForFee(enrollmentId);
   if (!enrollment) return fail("enrollment_invalid");
   if (enrollment.status === "CANCELLED") return fail("enrollment_cancelled");
   if (enrollment.userStatus !== "ACTIVE") return fail("student_inactive");
@@ -176,10 +176,10 @@ export async function assignFee({ enrollmentId, currency, total, discount, dueDa
   const cleaned = cleanNote(note);
   if (cleaned === null) return fail("note_long");
 
-  const batch = getBatch(enrollment.batchId);
+  const batch = await getBatch(enrollment.batchId);
   if (!batch) return fail("enrollment_invalid");
 
-  const result = createFeePlanTx({
+  const result = await createFeePlanTx({
     enrollmentId: enrollment.id,
     studentUserId: enrollment.studentUserId,
     courseSlug: batch.courseSlug,
@@ -195,7 +195,7 @@ export async function assignFee({ enrollmentId, currency, total, discount, dueDa
   await notifyFeeAssigned({
     userId: enrollment.studentUserId,
     feePlanId: result.feePlanId,
-    courseTitle: getCourse(batch.courseSlug)?.title ?? batch.courseSlug,
+    courseTitle: (await getCourse(batch.courseSlug))?.title ?? batch.courseSlug,
   });
   return { ok: true, feePlanId: result.feePlanId, studentUserId: enrollment.studentUserId };
 }
@@ -210,7 +210,7 @@ export async function updateFee({ feePlanId, total, discount, dueDate, note }) {
   const cleaned = cleanNote(note);
   if (cleaned === null) return fail("note_long");
 
-  const result = updateFeePlanTx({
+  const result = await updateFeePlanTx({
     feePlanId,
     totalMinor: money.totalMinor,
     discountMinor: money.discountMinor,
@@ -227,7 +227,7 @@ export async function cancelFee({ feePlanId, reason }) {
   const text = typeof reason === "string" ? reason.trim() : "";
   if (!text) return fail("reason_required");
   if (text.length > NOTE_MAX_LENGTH) return fail("note_long");
-  const result = cancelFeePlanTx({ feePlanId, reason: text, actorUserId: ctx.user.id });
+  const result = await cancelFeePlanTx({ feePlanId, reason: text, actorUserId: ctx.user.id });
   return result.ok ? { ok: true, feePlanId } : fail(result.reason);
 }
 
@@ -239,7 +239,7 @@ export async function recordManualPayment({ feePlanId, amount, method, paidOn, n
   const ctx = await getFinanceContext();
   if (!ctx) return fail("forbidden");
 
-  const plan = getFeePlanById(feePlanId);
+  const plan = await getFeePlanById(feePlanId);
   if (!plan) return fail("not_found");
   const amountMinor = parseAmountToMinor(typeof amount === "string" ? amount : "");
   if (amountMinor === null || amountMinor <= 0) return fail("payment_amount_invalid");
@@ -250,7 +250,7 @@ export async function recordManualPayment({ feePlanId, amount, method, paidOn, n
   if (cleaned === null) return fail("note_long");
   const key = typeof idempotencyKey === "string" && /^[A-Za-z0-9_-]{8,64}$/.test(idempotencyKey) ? `manual:${idempotencyKey}` : null;
 
-  const result = recordManualPaymentTx({
+  const result = await recordManualPaymentTx({
     feePlanId: plan.id,
     amountMinor,
     currency: plan.currency,
@@ -271,9 +271,9 @@ export async function voidPayment({ paymentId, reason }) {
   const text = typeof reason === "string" ? reason.trim() : "";
   if (!text) return fail("reason_required");
   if (text.length > NOTE_MAX_LENGTH) return fail("note_long");
-  const result = voidPaymentTx({ paymentId, reason: text, actorUserId: ctx.user.id });
+  const result = await voidPaymentTx({ paymentId, reason: text, actorUserId: ctx.user.id });
   if (!result.ok) return fail(result.reason);
-  const plan = getFeePlanById(result.feePlanId);
+  const plan = await getFeePlanById(result.feePlanId);
   if (plan) await notifyPaymentVoided({ userId: plan.studentUserId, paymentId });
   return { ok: true, feePlanId: result.feePlanId };
 }

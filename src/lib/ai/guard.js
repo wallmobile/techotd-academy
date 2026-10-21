@@ -20,13 +20,13 @@ const inFlight = new Set();
 export async function getAiStudent() {
   const user = await getCurrentUser();
   if (!user || user.role !== "STUDENT") return null;
-  const profile = getOrCreateStudentProfile(user.id);
+  const profile = await getOrCreateStudentProfile(user.id);
   return { user, profile };
 }
 
 // Courses the student is actually (non-cancelled) enrolled in.
-export function enrolledCourseSlugs(profileId) {
-  return listCourseEnrollmentsForStudent(profileId)
+export async function enrolledCourseSlugs(profileId) {
+  return (await listCourseEnrollmentsForStudent(profileId))
     .filter((e) => e.status !== "CANCELLED")
     .map((e) => e.courseSlug);
 }
@@ -38,12 +38,12 @@ export function enrolledCourseSlugs(profileId) {
  */
 export async function withAiLimits({ userId, feature, inputChars }, work) {
   if (!isAiConfigured()) return { ok: false, reason: "not_configured" };
-  if (countAiCallsToday(userId) >= DAILY_AI_LIMIT) {
-    recordAiUsage({ userId, feature, outcome: "blocked", inputChars });
+  if (await countAiCallsToday(userId) >= DAILY_AI_LIMIT) {
+    await recordAiUsage({ userId, feature, outcome: "blocked", inputChars });
     return { ok: false, reason: "daily_limit" };
   }
-  if (!hitLimit("aiAssistant", userId).allowed) {
-    recordAiUsage({ userId, feature, outcome: "blocked", inputChars });
+  if (!(await hitLimit("aiAssistant", userId)).allowed) {
+    await recordAiUsage({ userId, feature, outcome: "blocked", inputChars });
     return { ok: false, reason: "rate_limited" };
   }
   if (inFlight.has(userId)) return { ok: false, reason: "busy" };
@@ -51,7 +51,7 @@ export async function withAiLimits({ userId, feature, inputChars }, work) {
   inFlight.add(userId);
   try {
     const result = await work();
-    recordAiUsage({
+    await recordAiUsage({
       userId,
       feature,
       outcome: result.ok ? "ok" : result.code || "error",

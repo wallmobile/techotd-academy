@@ -17,17 +17,18 @@ function hashToken(token) {
 // and (via the caller, session.js) whether the cookie itself persists
 // across browser restarts — an unchecked "Remember me" still gets a real
 // session, just a shorter-lived, non-persistent one.
-export function createSession(userId, { remember = false } = {}) {
+export async function createSession(userId, { remember = false } = {}) {
   const token = crypto.randomBytes(32).toString("base64url");
   const tokenHash = hashToken(token);
   const id = crypto.randomUUID();
   const durationMs = remember ? REMEMBERED_DURATION_MS : DEFAULT_DURATION_MS;
   const expiresAt = new Date(Date.now() + durationMs).toISOString();
 
-  db.prepare(
+  await db.run(
     `INSERT INTO sessions (id, user_id, token_hash, expires_at)
-     VALUES (?, ?, ?, ?)`
-  ).run(id, userId, tokenHash, expiresAt);
+     VALUES (?, ?, ?, ?)`,
+    [id, userId, tokenHash, expiresAt]
+  );
 
   return { token, expiresAt, maxAgeSeconds: Math.floor(durationMs / 1000) };
 }
@@ -35,21 +36,19 @@ export function createSession(userId, { remember = false } = {}) {
 // Resolves a raw cookie token to its current user, or null if the session
 // doesn't exist / has expired. Expired sessions are opportunistically
 // cleaned up here rather than requiring a separate cron job.
-export function getUserBySessionToken(token) {
+export async function getUserBySessionToken(token) {
   if (!token) return null;
   const tokenHash = hashToken(token);
-  const session = db
-    .prepare("SELECT * FROM sessions WHERE token_hash = ?")
-    .get(tokenHash);
+  const session = await db.get("SELECT * FROM sessions WHERE token_hash = ?", [tokenHash]);
 
   if (!session) return null;
 
   if (new Date(session.expires_at).getTime() <= Date.now()) {
-    db.prepare("DELETE FROM sessions WHERE id = ?").run(session.id);
+    await db.run("DELETE FROM sessions WHERE id = ?", [session.id]);
     return null;
   }
 
-  return findUserById(session.user_id);
+  return await findUserById(session.user_id);
 }
 
 // Whether the session identified by this raw cookie token was created with
@@ -58,23 +57,25 @@ export function getUserBySessionToken(token) {
 // apart that a midpoint threshold is unambiguous). Used by
 // changePasswordAction so a password change doesn't silently downgrade a
 // remembered session to a browser-session cookie.
-export function isRememberedSessionToken(token) {
+export async function isRememberedSessionToken(token) {
   if (!token) return false;
   const tokenHash = hashToken(token);
-  const session = db.prepare("SELECT * FROM sessions WHERE token_hash = ?").get(tokenHash);
+  const session = await db.get("SELECT * FROM sessions WHERE token_hash = ?", [tokenHash]);
   if (!session) return false;
 
-  const lifetimeMs = new Date(session.expires_at).getTime() - new Date(session.created_at).getTime();
+  // created_at is app_now() text in UTC ("YYYY-MM-DD HH24:MI:SS"): parse it as UTC explicitly.
+  const createdAt = Date.parse(String(session.created_at).replace(" ", "T") + "Z");
+  const lifetimeMs = new Date(session.expires_at).getTime() - createdAt;
   return lifetimeMs > (REMEMBERED_DURATION_MS + DEFAULT_DURATION_MS) / 2;
 }
 
 // Server-side session invalidation for logout — deleting the row is what
 // makes logout real, independent of whatever the client does with its
 // cookie afterward.
-export function deleteSessionByToken(token) {
+export async function deleteSessionByToken(token) {
   if (!token) return;
   const tokenHash = hashToken(token);
-  db.prepare("DELETE FROM sessions WHERE token_hash = ?").run(tokenHash);
+  await db.run("DELETE FROM sessions WHERE token_hash = ?", [tokenHash]);
 }
 
 // Invalidates every session for a user (Phase 8.8: "Invalidate existing
@@ -83,6 +84,6 @@ export function deleteSessionByToken(token) {
 // the browser that just made the change — so a password change effectively
 // signs the account out everywhere else while leaving the person who just
 // changed it signed in.
-export function deleteAllSessionsForUser(userId) {
-  db.prepare("DELETE FROM sessions WHERE user_id = ?").run(userId);
+export async function deleteAllSessionsForUser(userId) {
+  await db.run("DELETE FROM sessions WHERE user_id = ?", [userId]);
 }

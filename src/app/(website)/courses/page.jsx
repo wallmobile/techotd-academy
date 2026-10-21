@@ -14,6 +14,6 @@ export default async function CoursesPage({ searchParams }) {
     typeof resolvedSearchParams.category === "string" ? resolvedSearchParams.category : undefined;
 
   return (
-    <CourseExplorer courses={listCourses({ publishedOnly: true })} categories={categories} initialCategory={initialCategory} />
+    <CourseExplorer courses={await listCourses({ publishedOnly: true })} categories={categories} initialCategory={initialCategory} />
   );
 }

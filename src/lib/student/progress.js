@@ -19,9 +19,9 @@ import {
 } from "@/lib/db/lessonProgress";
 import { getCourseCurriculum } from "@/lib/student/curriculum";
 
-export function computeCourseProgress(studentId, course) {
+export async function computeCourseProgress(studentId, course) {
   const curriculum = getCourseCurriculum(course);
-  const rows = listLessonProgressForStudentCourse(studentId, course.slug);
+  const rows = await listLessonProgressForStudentCourse(studentId, course.slug);
 
   const completedLessonIds = rows
     .filter((row) => row.completed)
@@ -42,7 +42,7 @@ export function computeCourseProgress(studentId, course) {
 // the signal the dashboard needs to fall back to its existing
 // no-progress-yet behavior rather than claiming a resume point that
 // doesn't exist.
-export function getMostRecentlyAccessedProgress(studentId) {
-  const rows = listAllLessonProgressForStudent(studentId);
+export async function getMostRecentlyAccessedProgress(studentId) {
+  const rows = await listAllLessonProgressForStudent(studentId);
   return rows[0] || null;
 }

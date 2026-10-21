@@ -17,12 +17,12 @@ export const metadata = {
   },
 };
 
-function readParams(searchParams) {
+async function readParams(searchParams) {
   const courseParam = typeof searchParams.course === "string" ? searchParams.course : "";
   const modeParam = typeof searchParams.mode === "string" ? searchParams.mode : "";
   const sourceParam = typeof searchParams.source === "string" ? searchParams.source : "";
 
-  const course = getCourse(courseParam, { publishedOnly: true }) ? courseParam : "";
+  const course = await getCourse(courseParam, { publishedOnly: true }) ? courseParam : "";
   const mode = getTrainingModeBySlug(modeParam) ? modeParam : "";
   const source = KNOWN_SOURCES.includes(sourceParam) ? sourceParam : "direct";
 
@@ -31,7 +31,7 @@ function readParams(searchParams) {
 
 export default async function EnquiryPage({ searchParams }) {
   const resolvedSearchParams = await searchParams;
-  const { course, mode, source } = readParams(resolvedSearchParams);
+  const { course, mode, source } = await readParams(resolvedSearchParams);
 
   return (
     <EnquiryShell variant="enquiry">
@@ -40,8 +40,8 @@ export default async function EnquiryPage({ searchParams }) {
         initialCourse={course}
         initialMode={mode}
         source={source}
-        courses={listCourses({ publishedOnly: true }).map((c) => ({ slug: c.slug, title: c.title }))}
-        batches={listBatches({ publicOnly: true })}
+        courses={(await listCourses({ publishedOnly: true })).map((c) => ({ slug: c.slug, title: c.title }))}
+        batches={await listBatches({ publicOnly: true })}
       />
     </EnquiryShell>
   );

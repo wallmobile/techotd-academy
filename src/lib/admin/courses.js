@@ -9,6 +9,7 @@
 // public site and from new enrollments.
 
 import { getAdminContext } from "@/lib/admin/context";
+import { isUniqueViolation } from "@/lib/db/client";
 import { listCourses, getCourse, getBaseCourse, slugExists, listBatches } from "@/lib/catalog";
 import {
   insertCustomCourse,
@@ -44,9 +45,9 @@ export function getCourseFormOptions() {
   };
 }
 
-function enrollmentCountsFor(courseSlug) {
-  const batchIds = listBatches({ courseSlug }).map((b) => b.id);
-  return { batchCount: batchIds.length, ...countEnrollmentsForBatches(batchIds) };
+async function enrollmentCountsFor(courseSlug) {
+  const batchIds = (await listBatches({ courseSlug })).map((b) => b.id);
+  return { batchCount: batchIds.length, ...await countEnrollmentsForBatches(batchIds) };
 }
 
 const SORTERS = {
@@ -59,7 +60,7 @@ const SORTERS = {
 export async function getCoursesPage({ q = "", category = "", level = "", status = "", sort = "az", page = 1 } = {}) {
   if (!(await getAdminContext())) return EMPTY_PAGE;
   const needle = q.trim().toLowerCase();
-  const filtered = listCourses()
+  const filtered = (await listCourses())
     .filter((c) => !category || c.categorySlug === category)
     .filter((c) => !level || c.level === level)
     .filter((c) => !status || c.status === status)
@@ -69,7 +70,7 @@ export async function getCoursesPage({ q = "", category = "", level = "", status
   const total = filtered.length;
   const totalPages = Math.max(1, Math.ceil(total / CATALOG_PAGE_SIZE));
   const current = Math.min(Math.max(1, page || 1), totalPages);
-  const rows = filtered.slice((current - 1) * CATALOG_PAGE_SIZE, current * CATALOG_PAGE_SIZE).map((c) => ({
+  const rows = await Promise.all(filtered.slice((current - 1) * CATALOG_PAGE_SIZE, current * CATALOG_PAGE_SIZE).map(async (c) => ({
     id: c.slug,
     slug: c.slug,
     title: c.title,
@@ -78,22 +79,22 @@ export async function getCoursesPage({ q = "", category = "", level = "", status
     duration: c.duration,
     status: c.status,
     isCustom: c.isCustom,
-    ...enrollmentCountsFor(c.slug),
-  }));
+    ...await enrollmentCountsFor(c.slug),
+  })));
   return { rows, page: current, totalPages, pageSize: CATALOG_PAGE_SIZE, total };
 }
 
 // Null for an unknown slug. The batches list carries per-batch enrollment counts.
 export async function getCourseDetailForAdmin(slug) {
   if (!(await getAdminContext())) return null;
-  const course = getCourse(slug);
+  const course = await getCourse(slug);
   if (!course) return null;
-  const batches = listBatches({ courseSlug: course.slug }).map((b) => ({ ...b, ...countEnrollmentsForBatches([b.id]) }));
+  const batches = await Promise.all((await listBatches({ courseSlug: course.slug })).map(async (b) => ({ ...b, ...await countEnrollmentsForBatches([b.id]) })));
   return {
     course,
     batches,
-    counts: enrollmentCountsFor(course.slug),
-    audit: listAuditForEntity("course", course.slug),
+    counts: await enrollmentCountsFor(course.slug),
+    audit: await listAuditForEntity("course", course.slug),
   };
 }
 
@@ -104,9 +105,9 @@ function sameValue(a, b) {
   return Array.isArray(a) || Array.isArray(b) ? JSON.stringify(a ?? []) === JSON.stringify(b ?? []) : (a ?? "") === (b ?? "");
 }
 
-function titleTaken(title, exceptSlug) {
+async function titleTaken(title, exceptSlug) {
   const key = title.toLowerCase();
-  return listCourses().some((c) => c.slug !== exceptSlug && c.title.trim().toLowerCase() === key);
+  return (await listCourses()).some((c) => c.slug !== exceptSlug && c.title.trim().toLowerCase() === key);
 }
 
 /** Creates an admin-defined course (starts Unpublished unless asked otherwise). */
@@ -117,16 +118,16 @@ export async function createCourse(raw) {
   const slug = validateCourseSlug(raw.slug);
   const { errors, value } = validateCourseInput(raw);
   if (slug.error) errors.slug = slug.error;
-  else if (slugExists(slug.value)) errors.slug = COURSE_MESSAGES.duplicate_slug;
-  if (!errors.title && titleTaken(value.title, null)) errors.title = COURSE_MESSAGES.duplicate_title;
+  else if (await slugExists(slug.value)) errors.slug = COURSE_MESSAGES.duplicate_slug;
+  if (!errors.title && await titleTaken(value.title, null)) errors.title = COURSE_MESSAGES.duplicate_title;
   const status = COURSE_STATUSES.includes(raw.status) ? raw.status : "UNPUBLISHED";
   if (Object.keys(errors).length > 0) return fail("invalid", { errors });
 
   try {
-    insertCustomCourse(ctx.user.id, slug.value, value, status);
+    await insertCustomCourse(ctx.user.id, slug.value, value, status);
   } catch (error) {
     // Two admins creating the same slug at once: the primary key decides.
-    if (String(error?.code || "").startsWith("SQLITE_CONSTRAINT")) return fail("duplicate_slug", { errors: { slug: COURSE_MESSAGES.duplicate_slug } });
+    if (isUniqueViolation(error)) return fail("duplicate_slug", { errors: { slug: COURSE_MESSAGES.duplicate_slug } });
     throw error;
   }
   return { ok: true, slug: slug.value, status };
@@ -136,11 +137,11 @@ export async function createCourse(raw) {
 export async function updateCourse(slug, raw) {
   const ctx = await getAdminContext();
   if (!ctx) return FORBIDDEN;
-  const course = getCourse(slug);
+  const course = await getCourse(slug);
   if (!course) return fail("not_found");
 
   const { errors, value } = validateCourseInput(raw);
-  if (!errors.title && titleTaken(value.title, course.slug)) errors.title = COURSE_MESSAGES.duplicate_title;
+  if (!errors.title && await titleTaken(value.title, course.slug)) errors.title = COURSE_MESSAGES.duplicate_title;
   if (Object.keys(errors).length > 0) return fail("invalid", { errors });
 
   const changed = FIELD_KEYS.filter((key) => !sameValue(value[key], course[key]));
@@ -153,7 +154,7 @@ export async function updateCourse(slug, raw) {
   const stored = {};
   for (const key of FIELD_KEYS) stored[key] = base && sameValue(value[key], base[key]) ? null : value[key];
 
-  saveCourseEdits(ctx.user.id, course.slug, course.origin, stored, changed);
+  await saveCourseEdits(ctx.user.id, course.slug, course.origin, stored, changed);
   return { ok: true, slug: course.slug, changed };
 }
 
@@ -162,10 +163,10 @@ export async function setCourseStatus(slug, status) {
   const ctx = await getAdminContext();
   if (!ctx) return FORBIDDEN;
   if (!COURSE_STATUSES.includes(status)) return fail("status_invalid");
-  const course = getCourse(slug);
+  const course = await getCourse(slug);
   if (!course) return fail("not_found");
   if (course.status === status) return { ok: true, slug: course.slug, status, unchanged: true };
 
-  dbSetCourseStatus(ctx.user.id, course.slug, course.origin, status);
-  return { ok: true, slug: course.slug, status, activeEnrollments: enrollmentCountsFor(course.slug).active };
+  await dbSetCourseStatus(ctx.user.id, course.slug, course.origin, status);
+  return { ok: true, slug: course.slug, status, activeEnrollments: (await enrollmentCountsFor(course.slug)).active };
 }

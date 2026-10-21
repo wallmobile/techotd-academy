@@ -18,7 +18,7 @@ export async function getManagedCourseContext() {
   const ctx = await getTrainerContext();
   if (!ctx) return null;
 
-  const assignedBatches = enrichAssignedBatches(ctx.batchIds);
+  const assignedBatches = await enrichAssignedBatches(ctx.batchIds);
   const courseSlugs = [...new Set(assignedBatches.map((ab) => ab.course.slug))];
 
   return { ...ctx, assignedBatches, courseSlugs };
@@ -68,14 +68,14 @@ export async function getMyManagedAssignments() {
   const ctx = await getManagedCourseContext();
   if (!ctx) return [];
 
-  const assignments = listAssignmentsForCourseSlugs(ctx.courseSlugs).filter((a) => isManagedByTrainer(a, ctx));
+  const assignments = (await listAssignmentsForCourseSlugs(ctx.courseSlugs)).filter((a) => isManagedByTrainer(a, ctx));
 
-  return assignments.map((assignment) => ({
+  return await Promise.all(assignments.map(async (assignment) => ({
     ...assignment,
-    course: getCourse(assignment.courseSlug),
-    batch: assignment.batchId ? getBatch(assignment.batchId) : null,
-    pendingReviewCount: countPendingSubmissionsForAssignmentInBatches(assignment.id, getReviewBatchIds(assignment, ctx)),
-  }));
+    course: await getCourse(assignment.courseSlug),
+    batch: assignment.batchId ? await getBatch(assignment.batchId) : null,
+    pendingReviewCount: await countPendingSubmissionsForAssignmentInBatches(assignment.id, getReviewBatchIds(assignment, ctx)),
+  })));
 }
 
 // Assignment detail for /trainer/assignments/[assignment-id]. Returns
@@ -85,13 +85,13 @@ export async function getAssignmentDetailForTrainer(assignmentId) {
   const ctx = await getManagedCourseContext();
   if (!ctx) return null;
 
-  const assignment = getAssignmentById(assignmentId);
+  const assignment = await getAssignmentById(assignmentId);
   if (!assignment) return null;
   if (!isManagedByTrainer(assignment, ctx)) return null;
 
-  const course = getCourse(assignment.courseSlug);
+  const course = await getCourse(assignment.courseSlug);
   if (!course) return null;
-  const batch = assignment.batchId ? getBatch(assignment.batchId) : null;
+  const batch = assignment.batchId ? await getBatch(assignment.batchId) : null;
 
   return { assignment, course, batch, reviewBatchIds: getReviewBatchIds(assignment, ctx) };
 }
@@ -118,7 +118,7 @@ export async function createManagedAssignment({ courseSlug, batchId, title, desc
   if (!ctx.courseSlugs.includes(courseSlug)) return { ok: false };
   if (batchId && !batchBelongsToCourse(ctx, batchId, courseSlug)) return { ok: false };
 
-  const assignment = createAssignment({ courseSlug, batchId, title, description, dueAt, status, createdBy: ctx.user.id });
+  const assignment = await createAssignment({ courseSlug, batchId, title, description, dueAt, status, createdBy: ctx.user.id });
   return { ok: true, assignment };
 }
 
@@ -129,11 +129,11 @@ export async function updateManagedAssignment(assignmentId, { title, description
   const ctx = await getManagedCourseContext();
   if (!ctx) return { ok: false };
 
-  const existing = getAssignmentById(assignmentId);
+  const existing = await getAssignmentById(assignmentId);
   if (!existing || !isManagedByTrainer(existing, ctx)) return { ok: false };
   if (batchId && !batchBelongsToCourse(ctx, batchId, existing.courseSlug)) return { ok: false };
 
-  const assignment = updateAssignment(assignmentId, {
+  const assignment = await updateAssignment(assignmentId, {
     title,
     description,
     dueAt,

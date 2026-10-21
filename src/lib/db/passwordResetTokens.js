@@ -13,8 +13,8 @@ function hashToken(token) {
 // it exists in plaintext) or null when there's no such account — callers
 // must still return the same public response either way, to avoid leaking
 // which emails are registered (account enumeration).
-export function createPasswordResetTokenForEmail(email) {
-  const user = findUserByEmailInternal(email);
+export async function createPasswordResetTokenForEmail(email) {
+  const user = await findUserByEmailInternal(email);
   if (!user) return null;
 
   const token = crypto.randomBytes(32).toString("base64url");
@@ -22,21 +22,20 @@ export function createPasswordResetTokenForEmail(email) {
   const id = crypto.randomUUID();
   const expiresAt = new Date(Date.now() + RESET_TOKEN_DURATION_MS).toISOString();
 
-  db.prepare(
+  await db.run(
     `INSERT INTO password_reset_tokens (id, user_id, token_hash, expires_at)
-     VALUES (?, ?, ?, ?)`
-  ).run(id, user.id, tokenHash, expiresAt);
+     VALUES (?, ?, ?, ?)`,
+    [id, user.id, tokenHash, expiresAt]
+  );
 
   return { token, userId: user.id };
 }
 
 // Validates a raw reset token: must exist, be unexpired, and unused.
-export function getValidPasswordResetToken(token) {
+export async function getValidPasswordResetToken(token) {
   if (!token) return null;
   const tokenHash = hashToken(token);
-  const row = db
-    .prepare("SELECT * FROM password_reset_tokens WHERE token_hash = ?")
-    .get(tokenHash);
+  const row = await db.get("SELECT * FROM password_reset_tokens WHERE token_hash = ?", [tokenHash]);
 
   if (!row) return null;
   if (row.used_at) return null;
@@ -45,10 +44,8 @@ export function getValidPasswordResetToken(token) {
   return { id: row.id, userId: row.user_id };
 }
 
-export function markPasswordResetTokenUsed(tokenId) {
-  db.prepare(
-    "UPDATE password_reset_tokens SET used_at = datetime('now') WHERE id = ?"
-  ).run(tokenId);
+export async function markPasswordResetTokenUsed(tokenId) {
+  await db.run("UPDATE password_reset_tokens SET used_at = app_now() WHERE id = ?", [tokenId]);
 }
 
 // Completes a reset atomically (Phase 9.4): consumes the token, sets the
@@ -59,22 +56,15 @@ export function markPasswordResetTokenUsed(tokenId) {
 // first UPDATE change a row). Any other still-outstanding reset tokens for
 // the user are retired too. Returns true on success, false if the token
 // was already consumed. The user must sign in again afterwards.
-export function completePasswordReset({ tokenId, userId, passwordHash }) {
-  const run = db.transaction(() => {
-    const consumed = db
-      .prepare("UPDATE password_reset_tokens SET used_at = datetime('now') WHERE id = ? AND used_at IS NULL")
-      .run(tokenId);
+export async function completePasswordReset({ tokenId, userId, passwordHash }) {
+  return await db.tx(async (t) => {
+    // Row-level: a concurrent second submission blocks on this UPDATE and then sees used_at set.
+    const consumed = await t.run("UPDATE password_reset_tokens SET used_at = app_now() WHERE id = ? AND used_at IS NULL", [tokenId]);
     if (consumed.changes !== 1) return false;
 
-    db.prepare("UPDATE users SET password_hash = ?, updated_at = datetime('now') WHERE id = ?").run(
-      passwordHash,
-      userId
-    );
-    db.prepare(
-      "UPDATE password_reset_tokens SET used_at = datetime('now') WHERE user_id = ? AND used_at IS NULL"
-    ).run(userId);
-    db.prepare("DELETE FROM sessions WHERE user_id = ?").run(userId);
+    await t.run("UPDATE users SET password_hash = ?, updated_at = app_now() WHERE id = ?", [passwordHash, userId]);
+    await t.run("UPDATE password_reset_tokens SET used_at = app_now() WHERE user_id = ? AND used_at IS NULL", [userId]);
+    await t.run("DELETE FROM sessions WHERE user_id = ?", [userId]);
     return true;
   });
-  return run();
 }

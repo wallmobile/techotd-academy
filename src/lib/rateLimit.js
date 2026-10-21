@@ -1,9 +1,8 @@
 // Request throttling helpers (production-readiness hardening).
 //
-// Backed by the shared SQLite file (src/lib/db/rateLimits.js), so the limit
-// holds across every server process on this database — NOT per-process
-// memory. It does not span multiple hosts with separate database files; a
-// multi-host deployment needs a shared store (Redis etc.) or edge/WAF rate
+// Backed by the shared PostgreSQL database (src/lib/db/rateLimits.js), so the
+// limit holds across every server process and serverless instance using that
+// database — NOT per-process memory. For volumetric abuse add edge/WAF rate
 // limiting in front. The client IP comes from X-Forwarded-For / X-Real-IP,
 // which is only trustworthy behind reverse proxies you control (see
 // trustedProxyHops below).
@@ -64,8 +63,8 @@ export const LIMITS = {
 
 // Returns { allowed, remaining, retryAfterSeconds }. Every named limiter is
 // keyed by a hash of (name, ...identity parts).
-export function hitLimit(name, ...identity) {
+export async function hitLimit(name, ...identity) {
   const cfg = LIMITS[name];
   if (!cfg) throw new Error(`Unknown rate limiter: ${name}`);
-  return consumeRateLimit(`${name}:${bucket([name, ...identity])}`, cfg);
+  return await consumeRateLimit(`${name}:${bucket([name, ...identity])}`, cfg);
 }

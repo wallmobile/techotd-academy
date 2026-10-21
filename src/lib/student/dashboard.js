@@ -18,29 +18,29 @@ export async function getStudentDashboardData() {
   const user = await getCurrentUser();
   if (!user || user.role !== "STUDENT") return null;
 
-  const profile = getOrCreateStudentProfile(user.id);
+  const profile = await getOrCreateStudentProfile(user.id);
 
-  const courseEnrollments = listCourseEnrollmentsForStudent(profile.id)
-    .map((enrollment) => ({ ...enrollment, course: getCourse(enrollment.courseSlug) }))
+  const courseEnrollments = (await Promise.all((await listCourseEnrollmentsForStudent(profile.id))
+    .map(async (enrollment) => ({ ...enrollment, course: await getCourse(enrollment.courseSlug) }))))
     // An enrollment whose course slug no longer exists in the catalog is
     // dropped rather than shown with missing/undefined course details.
     .filter((enrollment) => Boolean(enrollment.course));
 
-  const batchEnrollments = listBatchEnrollmentsForStudent(profile.id)
-    .map((enrollment) => ({ ...enrollment, batch: getBatch(enrollment.batchId) }))
+  const batchEnrollments = await Promise.all((await Promise.all((await listBatchEnrollmentsForStudent(profile.id))
+    .map(async (enrollment) => ({ ...enrollment, batch: await getBatch(enrollment.batchId) }))))
     .filter((enrollment) => Boolean(enrollment.batch))
-    .map((enrollment) => ({
+    .map(async (enrollment) => ({
       ...enrollment,
-      course: getCourse(enrollment.batch.courseSlug),
-    }));
+      course: await getCourse(enrollment.batch.courseSlug),
+    })));
 
   // Real per-lesson progress (Phase 8.4), calculated from lesson_progress
   // rows — never stored or guessed. One computeCourseProgress call per
   // active enrollment (bounded by how many courses a student is actually
   // in, not the whole database).
-  const activeCourseEnrollments = courseEnrollments
+  const activeCourseEnrollments = await Promise.all(courseEnrollments
     .filter((e) => e.status === "ACTIVE")
-    .map((e) => ({ ...e, progress: computeCourseProgress(profile.id, e.course).percent }));
+    .map(async (e) => ({ ...e, progress: (await computeCourseProgress(profile.id, e.course)).percent })));
   const completedCourseEnrollments = courseEnrollments.filter((e) => e.status === "COMPLETED");
   const activeBatchEnrollment = batchEnrollments.find((e) => e.status === "ACTIVE") || null;
 
@@ -49,7 +49,7 @@ export async function getStudentDashboardData() {
   // (no lesson_progress rows at all), there's nothing to resume, and this
   // falls back to their first active enrollment instead — same as the
   // pre-8.4 behavior — rather than fabricating a resume point.
-  const mostRecent = getMostRecentlyAccessedProgress(profile.id);
+  const mostRecent = await getMostRecentlyAccessedProgress(profile.id);
   let continueLearningEnrollment = null;
   if (mostRecent) {
     const match = activeCourseEnrollments.find((e) => e.courseSlug === mostRecent.courseSlug);
@@ -79,13 +79,13 @@ export async function getStudentDashboardData() {
     .filter((e) => e.status !== "CANCELLED")
     .map((e) => e.batchId);
   const now = new Date();
-  const nextSession = listSessionsForBatchIds(nonCancelledBatchIds)
+  const nextSession = (await Promise.all((await listSessionsForBatchIds(nonCancelledBatchIds))
     .filter((s) => s.status !== "CANCELLED" && new Date(`${s.sessionDate}T${s.startTime}:00`) >= now)
     .sort(
       (a, b) =>
         new Date(`${a.sessionDate}T${a.startTime}:00`) - new Date(`${b.sessionDate}T${b.startTime}:00`)
     )
-    .map((s) => ({ ...s, batch: getBatch(s.batchId), course: getCourse(getBatch(s.batchId).courseSlug) }))[0] || null;
+    .map(async (s) => ({ ...s, batch: await getBatch(s.batchId), course: await getCourse((await getBatch(s.batchId)).courseSlug) }))))[0] || null;
 
   return {
     user,

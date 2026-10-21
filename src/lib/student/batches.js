@@ -22,15 +22,15 @@ export async function getMyBatchEnrollments() {
   const user = await getCurrentUser();
   if (!user || user.role !== "STUDENT") return [];
 
-  const profile = getOrCreateStudentProfile(user.id);
+  const profile = await getOrCreateStudentProfile(user.id);
 
-  return listBatchEnrollmentsForStudent(profile.id)
+  return (await Promise.all((await listBatchEnrollmentsForStudent(profile.id))
     .filter((enrollment) => enrollment.status !== "CANCELLED")
-    .map((enrollment) => {
-      const batch = getBatch(enrollment.batchId);
+    .map(async (enrollment) => {
+      const batch = await getBatch(enrollment.batchId);
       if (!batch) return { ...enrollment, batch: null, course: null };
-      return { ...enrollment, batch, course: getCourse(batch.courseSlug) };
-    })
+      return { ...enrollment, batch, course: await getCourse(batch.courseSlug) };
+    })))
     .filter((enrollment) => Boolean(enrollment.batch));
 }
 
@@ -45,18 +45,18 @@ export async function getMySchedule() {
   const user = await getCurrentUser();
   if (!user || user.role !== "STUDENT") return { upcoming: [], past: [], nextSession: null };
 
-  const profile = getOrCreateStudentProfile(user.id);
-  const batchEnrollments = listBatchEnrollmentsForStudent(profile.id).filter(
+  const profile = await getOrCreateStudentProfile(user.id);
+  const batchEnrollments = (await listBatchEnrollmentsForStudent(profile.id)).filter(
     (e) => e.status !== "CANCELLED"
   );
   const batchIds = batchEnrollments.map((e) => e.batchId);
 
-  const sessions = listSessionsForBatchIds(batchIds)
-    .map((session) => {
-      const batch = getBatch(session.batchId);
+  const sessions = (await Promise.all((await listSessionsForBatchIds(batchIds))
+    .map(async (session) => {
+      const batch = await getBatch(session.batchId);
       if (!batch) return null;
-      return { ...session, batch, course: getCourse(batch.courseSlug) };
-    })
+      return { ...session, batch, course: await getCourse(batch.courseSlug) };
+    })))
     .filter(Boolean);
 
   const now = new Date();

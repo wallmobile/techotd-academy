@@ -17,13 +17,13 @@ export async function getTrainerDashboardData() {
   if (!ctx) return null;
 
   const { user, batchIds } = ctx;
-  const assignedBatches = enrichAssignedBatches(batchIds);
+  const assignedBatches = await enrichAssignedBatches(batchIds);
 
-  const studentCounts = countActiveBatchEnrollmentsForBatchIds(batchIds);
-  const enrolledStudents = listEnrolledStudentsForBatchIds(batchIds);
+  const studentCounts = await countActiveBatchEnrollmentsForBatchIds(batchIds);
+  const enrolledStudents = await listEnrolledStudentsForBatchIds(batchIds);
   const activeStudentCount = new Set(enrolledStudents.map((s) => s.userId)).size;
 
-  const sessions = listSessionsForBatchIds(batchIds).filter((s) => s.status !== "CANCELLED");
+  const sessions = (await listSessionsForBatchIds(batchIds)).filter((s) => s.status !== "CANCELLED");
   const now = new Date();
   const upcomingSessions = sessions
     .filter((s) => sessionDateTime(s) >= now)

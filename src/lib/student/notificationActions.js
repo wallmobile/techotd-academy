@@ -14,6 +14,6 @@ export async function markNotificationReadAction(notificationId) {
   const user = await getCurrentUser();
   if (!user) return { ok: false };
 
-  markNotificationRead(user.id, notificationId);
-  return { ok: true, unreadCount: countUnreadForUser(user.id) };
+  await markNotificationRead(user.id, notificationId);
+  return { ok: true, unreadCount: await countUnreadForUser(user.id) };
 }

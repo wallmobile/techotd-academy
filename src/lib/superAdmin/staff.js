@@ -5,6 +5,7 @@
 // (src/lib/admin/users.js), which already enforces self-lockout and
 // last-Super-Admin protection.
 
+import { isUniqueViolation } from "@/lib/db/client";
 import { getSuperAdminContext } from "@/lib/superAdmin/context";
 import { PAGE_SIZE, paginate } from "@/lib/admin/listParams";
 import { getAdminDashboardData } from "@/lib/admin/dashboard";
@@ -19,8 +20,8 @@ const EMPTY_PAGE = { rows: [], page: 1, totalPages: 1, pageSize: PAGE_SIZE, tota
 
 export async function getStaffPage({ q, role, sort, page }) {
   if (!(await getSuperAdminContext())) return EMPTY_PAGE;
-  const probe = paginate(listStaffPage({ roles: STAFF_ROLES, q, role, sort, limit: 1, offset: 0 }).total, page);
-  const { rows, total } = listStaffPage({
+  const probe = paginate((await listStaffPage({ roles: STAFF_ROLES, q, role, sort, limit: 1, offset: 0 })).total, page);
+  const { rows, total } = await listStaffPage({
     roles: STAFF_ROLES,
     q,
     role,
@@ -40,7 +41,7 @@ export async function getSuperAdminOverview() {
 
   const count = Object.fromEntries(base.roleDistribution.map((r) => [r.role, r.count]));
   const staffByRole = STAFF_ROLES.map((role) => ({ role, count: count[role] || 0 }));
-  const recentStaff = listStaffPage({ roles: STAFF_ROLES, limit: 5, offset: 0 }).rows;
+  const recentStaff = (await listStaffPage({ roles: STAFF_ROLES, limit: 5, offset: 0 })).rows;
 
   return {
     stats: base.stats,
@@ -61,16 +62,16 @@ export async function createStaffAccount({ name, email, phone, password, role })
   if (!ctx) return { ok: false, reason: "forbidden" };
   if (!CREATABLE_STAFF_ROLES.includes(role)) return { ok: false, reason: "invalid_role" };
 
-  if (findUserByEmailInternal(email)) return { ok: false, reason: "duplicate_email" };
+  if (await findUserByEmailInternal(email)) return { ok: false, reason: "duplicate_email" };
 
   const passwordHash = await hashPassword(password);
   try {
-    const user = createUser({ name, email, phone: phone || null, passwordHash, role });
+    const user = await createUser({ name, email, phone: phone || null, passwordHash, role });
     // Who created which privileged account, and with what role (never the password).
-    writeAudit(ctx.user.id, "staff.created", "user", user.id, { role });
+    await writeAudit(ctx.user.id, "staff.created", "user", user.id, { role });
     return { ok: true, user };
   } catch (error) {
-    if (String(error.message).includes("UNIQUE")) return { ok: false, reason: "duplicate_email" };
+    if (isUniqueViolation(error)) return { ok: false, reason: "duplicate_email" };
     throw error;
   }
 }

@@ -30,10 +30,10 @@ export async function getMyCertificates() {
   const user = await getCurrentUser();
   if (!user || user.role !== "STUDENT") return [];
 
-  const profile = getOrCreateStudentProfile(user.id);
+  const profile = await getOrCreateStudentProfile(user.id);
 
-  return listCertificatesForStudent(profile.id)
-    .map((certificate) => ({ ...publicView(certificate), course: getCourse(certificate.courseSlug) }))
+  return (await Promise.all((await listCertificatesForStudent(profile.id))
+    .map(async (certificate) => ({ ...publicView(certificate), course: await getCourse(certificate.courseSlug) }))))
     .filter((certificate) => Boolean(certificate.course));
 }
 
@@ -45,12 +45,12 @@ export async function getCertificateDetailForStudent(certificateId) {
   const user = await getCurrentUser();
   if (!user || user.role !== "STUDENT") return null;
 
-  const profile = getOrCreateStudentProfile(user.id);
-  const certificate = getCertificateById(certificateId);
+  const profile = await getOrCreateStudentProfile(user.id);
+  const certificate = await getCertificateById(certificateId);
   if (!certificate) return null;
   if (certificate.studentId !== profile.id) return null;
 
-  const course = getCourse(certificate.courseSlug);
+  const course = await getCourse(certificate.courseSlug);
   if (!course) return null;
 
   return { certificate: publicView(certificate), course, studentName: user.name };
@@ -60,8 +60,8 @@ export async function getCertificateDetailForStudent(certificateId) {
 export async function getMyCertificatePdf(certificateId) {
   const user = await getCurrentUser();
   if (!user || user.role !== "STUDENT") return { ok: false, reason: "not_found" };
-  const profile = getOrCreateStudentProfile(user.id);
-  const certificate = getCertificateById(certificateId);
+  const profile = await getOrCreateStudentProfile(user.id);
+  const certificate = await getCertificateById(certificateId);
   if (!certificate || certificate.studentId !== profile.id) return { ok: false, reason: "not_found" };
-  return renderCertificatePdf(certificate);
+  return await renderCertificatePdf(certificate);
 }

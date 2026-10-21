@@ -22,7 +22,7 @@ export default async function AdminBatchDetailPage({ params }) {
   const detail = await getBatchDetailForAdmin(batchId);
   if (!detail) notFound();
   const { batch, course, trainers, assignableTrainers, enrollments, enrollmentPreview, audit } = detail;
-  const options = getBatchFormOptions();
+  const options = await getBatchFormOptions();
   const courseTitle = course?.title ?? batch.courseSlug;
 
   return (

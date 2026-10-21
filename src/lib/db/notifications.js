@@ -36,60 +36,52 @@ function rowToNotification(row) {
 // `userId` must always come from the authenticated session (see
 // src/lib/student/notifications.js) — never a value a client supplied.
 // Bounded: at most `limit` rows per call.
-export function listNotificationsForUser(userId, { limit = 100, offset = 0 } = {}) {
-  return db
-    .prepare("SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?")
-    .all(userId, limit, offset)
-    .map(rowToNotification);
+export async function listNotificationsForUser(userId, { limit = 100, offset = 0 } = {}) {
+  const rows = await db.all("SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC, seq DESC LIMIT ? OFFSET ?", [userId, limit, offset]);
+  return rows.map(rowToNotification);
 }
 
-export function countNotificationsForUser(userId) {
-  return db.prepare("SELECT COUNT(*) as c FROM notifications WHERE user_id = ?").get(userId).c;
+export async function countNotificationsForUser(userId) {
+  return (await db.get("SELECT COUNT(*) AS c FROM notifications WHERE user_id = ?", [userId])).c;
 }
 
-export function countUnreadForUser(userId) {
-  return db
-    .prepare("SELECT COUNT(*) as c FROM notifications WHERE user_id = ? AND read_at IS NULL")
-    .get(userId).c;
+export async function countUnreadForUser(userId) {
+  return (await db.get("SELECT COUNT(*) AS c FROM notifications WHERE user_id = ? AND read_at IS NULL", [userId])).c;
 }
 
 // Ownership is enforced by the WHERE clause itself: marking a notification
 // id that belongs to a different user matches zero rows and does nothing.
 // Idempotent — a second call keeps the first read_at (COALESCE).
-export function markNotificationRead(userId, notificationId) {
-  db.prepare(
+export async function markNotificationRead(userId, notificationId) {
+  await db.run(
     `UPDATE notifications
-     SET read_at = COALESCE(read_at, datetime('now'))
-     WHERE id = ? AND user_id = ?`
-  ).run(notificationId, userId);
-
-  return rowToNotification(
-    db.prepare("SELECT * FROM notifications WHERE id = ? AND user_id = ?").get(notificationId, userId)
+     SET read_at = COALESCE(read_at, app_now())
+     WHERE id = ? AND user_id = ?`,
+    [notificationId, userId]
   );
+
+  return rowToNotification(await db.get("SELECT * FROM notifications WHERE id = ? AND user_id = ?", [notificationId, userId]));
 }
 
-export function markAllNotificationsRead(userId) {
-  return db
-    .prepare("UPDATE notifications SET read_at = datetime('now') WHERE user_id = ? AND read_at IS NULL")
-    .run(userId).changes;
+export async function markAllNotificationsRead(userId) {
+  return (await db.run("UPDATE notifications SET read_at = app_now() WHERE user_id = ? AND read_at IS NULL", [userId])).changes;
 }
 
 // Creates a notification. With an `eventKey`, creation is idempotent per
 // (user, eventKey): a retried business event returns the existing row with
 // `created: false` instead of a duplicate. Returns { notification, created }.
-export function createNotification({ userId, title, message, type = "GENERAL", link = null, eventKey = null }) {
+export async function createNotification({ userId, title, message, type = "GENERAL", link = null, eventKey = null }) {
   const id = crypto.randomUUID();
-  const result = db
-    .prepare(
-      `INSERT INTO notifications (id, user_id, title, message, type, link, event_key)
-       VALUES (?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT (user_id, event_key) WHERE event_key IS NOT NULL DO NOTHING`
-    )
-    .run(id, userId, title, message, type, link, eventKey);
+  const result = await db.run(
+    `INSERT INTO notifications (id, user_id, title, message, type, link, event_key)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT (user_id, event_key) WHERE event_key IS NOT NULL DO NOTHING`,
+    [id, userId, title, message, type, link, eventKey]
+  );
 
   if (result.changes === 1) {
-    return { notification: rowToNotification(db.prepare("SELECT * FROM notifications WHERE id = ?").get(id)), created: true };
+    return { notification: rowToNotification(await db.get("SELECT * FROM notifications WHERE id = ?", [id])), created: true };
   }
-  const existing = db.prepare("SELECT * FROM notifications WHERE user_id = ? AND event_key = ?").get(userId, eventKey);
+  const existing = await db.get("SELECT * FROM notifications WHERE user_id = ? AND event_key = ?", [userId, eventKey]);
   return { notification: rowToNotification(existing), created: false };
 }

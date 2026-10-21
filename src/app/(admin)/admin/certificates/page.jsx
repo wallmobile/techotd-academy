@@ -73,7 +73,7 @@ export default async function AdminCertificatesPage({ searchParams }) {
             </Select>
             <Select label="Course" id="course" name="course" defaultValue={params.course}>
               <option value="">All courses</option>
-              {listCourses().map((c) => (
+              {(await listCourses()).map((c) => (
                 <option key={c.slug} value={c.slug}>
                   {c.title}
                 </option>

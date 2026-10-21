@@ -47,7 +47,7 @@ export async function submitAssignmentAction(_prevState, formData) {
   // 2. The assignment must be real and in a student-visible status
   //    (never DRAFT) — same check the detail page uses, re-run here
   //    rather than trusted from a hidden field.
-  const assignment = getVisibleAssignmentById(assignmentId);
+  const assignment = await getVisibleAssignmentById(assignmentId);
   if (!assignment) {
     return {
       status: "error",
@@ -59,14 +59,14 @@ export async function submitAssignmentAction(_prevState, formData) {
 
   // 3. Enrollment: this student must be enrolled in the assignment's
   //    course (and, if the assignment is batch-scoped, that exact batch).
-  const profile = getOrCreateStudentProfile(user.id);
+  const profile = await getOrCreateStudentProfile(user.id);
   const courseSlugs = new Set(
-    listCourseEnrollmentsForStudent(profile.id)
+    (await listCourseEnrollmentsForStudent(profile.id))
       .filter((e) => e.status !== "CANCELLED")
       .map((e) => e.courseSlug)
   );
   const batchIds = new Set(
-    listBatchEnrollmentsForStudent(profile.id)
+    (await listBatchEnrollmentsForStudent(profile.id))
       .filter((e) => e.status !== "CANCELLED")
       .map((e) => e.batchId)
   );
@@ -96,13 +96,13 @@ export async function submitAssignmentAction(_prevState, formData) {
     return { status: "error", errors, values: { submissionText } };
   }
 
-  upsertSubmission({
+  await upsertSubmission({
     assignmentId: assignment.id,
     studentId: profile.id,
     submissionText: submissionText.trim(),
   });
 
-  const submission = getSubmissionForStudentAssignment(profile.id, assignment.id);
+  const submission = await getSubmissionForStudentAssignment(profile.id, assignment.id);
 
   // The submission-status/feedback cards on the assignment detail page are
   // server-rendered from initial page props, not from this action's return

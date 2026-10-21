@@ -23,8 +23,8 @@ const MAX_TECH = 4;
 
 // Course count and technologies are derived from the course catalog, so the
 // card never claims more than the data supports.
-function getItems() {
-  const courses = listCourses({ publishedOnly: true });
+async function getItems() {
+  const courses = await listCourses({ publishedOnly: true });
   return categories.map((category) => {
     const inCategory = courses.filter((course) => course.categorySlug === category.slug);
     const technologies = [...new Set(inCategory.flatMap((course) => course.technologies))];
@@ -32,8 +32,8 @@ function getItems() {
   });
 }
 
-export function LearningCategories() {
-  const items = getItems();
+export async function LearningCategories() {
+  const items = await getItems();
   return (
     <Section>
       <div className="mx-auto mb-10 flex max-w-2xl flex-col items-center gap-3 text-center">

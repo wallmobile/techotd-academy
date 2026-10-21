@@ -42,16 +42,16 @@ export function verifyWebhookSignature(rawBody, signatureHex, secret = process.e
 
 // `amount` is the provider's decimal string; it is parsed to integer minor
 // units and must be > 0. Never call this with unverified input.
-export function confirmGatewayPayment({ provider, eventId, providerReference, feePlanId, amount, currency, paidOn }) {
+export async function confirmGatewayPayment({ provider, eventId, providerReference, feePlanId, amount, currency, paidOn }) {
   if (![provider, eventId, providerReference, feePlanId].every((v) => typeof v === "string" && v.length > 0 && v.length <= 200)) {
     return { ok: false, reason: "invalid_event" };
   }
   const amountMinor = parseAmountToMinor(typeof amount === "string" ? amount : "");
   if (amountMinor === null || amountMinor <= 0) return { ok: false, reason: "invalid_amount" };
-  const plan = getFeePlanById(feePlanId);
+  const plan = await getFeePlanById(feePlanId);
   if (!plan) return { ok: false, reason: "unknown_fee" };
   if (currency !== plan.currency) return { ok: false, reason: "currency_mismatch" };
 
   const date = typeof paidOn === "string" && /^\d{4}-\d{2}-\d{2}$/.test(paidOn) ? paidOn : new Date().toISOString().slice(0, 10);
-  return recordGatewayPaymentTx({ provider, eventId, providerReference, feePlanId, amountMinor, currency, paidOn: date });
+  return await recordGatewayPaymentTx({ provider, eventId, providerReference, feePlanId, amountMinor, currency, paidOn: date });
 }

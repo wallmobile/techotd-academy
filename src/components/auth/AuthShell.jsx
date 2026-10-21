@@ -55,10 +55,10 @@ const FORM_STYLES = [
  * `aside` optionally renders a "switch page" prompt next to the back link,
  * e.g. { text: "New here?", label: "Create account", href: "/register" }.
  */
-export function AuthShell({ eyebrow, title, description, highlights, aside, children }) {
+export async function AuthShell({ eyebrow, title, description, highlights, aside, children }) {
   const points = highlights && highlights.length > 0 ? highlights : DEFAULT_HIGHLIGHTS;
-  const nextBatch = listBatches({ publicOnly: true })[0];
-  const nextCourse = nextBatch ? getCourse(nextBatch.courseSlug) : null;
+  const nextBatch = (await listBatches({ publicOnly: true }))[0];
+  const nextCourse = nextBatch ? await getCourse(nextBatch.courseSlug) : null;
 
   return (
     <div className="relative isolate flex min-h-dvh items-center justify-center overflow-hidden bg-surface px-4 py-8">

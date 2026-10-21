@@ -38,18 +38,18 @@ export async function changeStaffPassword(values) {
 
   // Counted on every real attempt (including wrong ones) so the current password
   // can't be brute-forced from a hijacked session.
-  if (!hitLimit("changePassword", user.id).allowed) return { ok: false, reason: "rate_limited", message: CHANGE_PASSWORD_MESSAGES.rate_limited };
+  if (!(await hitLimit("changePassword", user.id)).allowed) return { ok: false, reason: "rate_limited", message: CHANGE_PASSWORD_MESSAGES.rate_limited };
 
-  const internal = findUserByIdInternal(user.id);
+  const internal = await findUserByIdInternal(user.id);
   if (!internal || !(await verifyPassword(values.currentPassword, internal.passwordHash))) {
     return { ok: false, reason: "wrong_current", errors: { currentPassword: CHANGE_PASSWORD_MESSAGES.wrong_current } };
   }
 
-  updateUserPasswordHash(user.id, await hashPassword(values.password));
+  await updateUserPasswordHash(user.id, await hashPassword(values.password));
   // Read the "remember me" choice before the session row it depends on is deleted.
   const remember = await isCurrentSessionRemembered();
-  deleteAllSessionsForUser(user.id);
+  await deleteAllSessionsForUser(user.id);
   await startSession(user.id, { remember });
-  writeAudit(user.id, "account.password_changed", "user", user.id, { sessionsRevoked: true });
+  await writeAudit(user.id, "account.password_changed", "user", user.id, { sessionsRevoked: true });
   return { ok: true };
 }

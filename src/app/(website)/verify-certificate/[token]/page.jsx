@@ -26,7 +26,7 @@ export default async function VerifyCertificatePage({ params }) {
   // Abuse control: bounded lookups per client IP (shared across processes on
   // this database). Over the limit, no lookup is performed at all.
   const ip = await getClientIp();
-  if (!hitLimit("verifyCertificate", ip).allowed) {
+  if (!(await hitLimit("verifyCertificate", ip)).allowed) {
     return (
       <Container className="py-16">
         <Card className="mx-auto w-full max-w-xl text-center">
@@ -37,7 +37,7 @@ export default async function VerifyCertificatePage({ params }) {
     );
   }
 
-  const result = getPublicVerification(token);
+  const result = await getPublicVerification(token);
   if (!result) notFound();
 
   return (

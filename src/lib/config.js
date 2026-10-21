@@ -12,29 +12,30 @@ const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
 const filled = (env, name) => typeof env[name] === "string" && env[name].trim() !== "";
 
 /**
- * Interprets DATABASE_URL. Supported: unset (default ./data/app.db), a
- * `file:` URL, or an absolute filesystem path. Anything with another URL
- * scheme (postgres://, mysql://, https://...) is a misconfiguration: this app
- * only speaks SQLite, and silently turning such a value into a file name
- * would create an unexpected, empty database.
- * Returns { ok: true, kind, rawPath } | { ok: false, error }.
+ * Interprets DATABASE_URL: a PostgreSQL connection string
+ * (postgres://user:password@host:5432/dbname?sslmode=require). There is no
+ * default: without it the application cannot store anything. Anything else
+ * (an old SQLite file: URL, mysql://, https://...) is a misconfiguration.
+ * Error messages never include the value (it contains the password).
+ * Returns { ok: true, url, host, local, sslmode } | { ok: false, error }.
  */
 export function parseDatabaseUrl(url) {
-  if (url === undefined || url === null || String(url).trim() === "") return { ok: true, kind: "default", rawPath: "./data/app.db" };
+  if (url === undefined || url === null || String(url).trim() === "") {
+    return { ok: false, error: "DATABASE_URL is not set. Set it to a PostgreSQL connection string (postgres://user:password@host:5432/dbname)." };
+  }
   const value = String(url).trim();
-  if (/^file:/i.test(value)) {
-    const rawPath = value.slice("file:".length);
-    if (!rawPath) return { ok: false, error: "DATABASE_URL has no path after file:." };
-    return { ok: true, kind: isAbsolutePath(rawPath) ? "absolute" : "relative", rawPath };
+  let parsed;
+  try {
+    parsed = new URL(value);
+  } catch {
+    return { ok: false, error: "DATABASE_URL is not a valid connection URL. Expected postgres://user:password@host:5432/dbname (special characters in the password must be percent-encoded)." };
   }
-  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(value)) {
-    return { ok: false, error: "DATABASE_URL must be a SQLite file: URL or an absolute file path; this application does not support other database servers." };
+  if (parsed.protocol !== "postgres:" && parsed.protocol !== "postgresql:") {
+    return { ok: false, error: "DATABASE_URL must be a PostgreSQL connection string (postgres://...). SQLite file: URLs and other database servers are not supported." };
   }
-  return { ok: true, kind: isAbsolutePath(value) ? "absolute" : "relative", rawPath: value };
-}
-
-function isAbsolutePath(p) {
-  return /^(?:[a-zA-Z]:[\\/]|[\\/])/.test(p);
+  if (!parsed.hostname) return { ok: false, error: "DATABASE_URL has no host." };
+  if (parsed.pathname.length <= 1) return { ok: false, error: "DATABASE_URL has no database name (postgres://user:password@host:5432/dbname)." };
+  return { ok: true, url: value, host: parsed.hostname, local: LOCAL_HOSTS.has(parsed.hostname), sslmode: parsed.searchParams.get("sslmode") };
 }
 
 /** Validates NEXT_PUBLIC_SITE_URL. Returns { ok, error?, https? , local? }. */
@@ -113,18 +114,22 @@ export function inspectEnvironment(env = process.env, { builtSiteUrl } = {}) {
     }
   }
 
-  // --- DATABASE_URL
-  const db = parseDatabaseUrl(env.DATABASE_URL);
-  if (!db.ok) {
-    mark("DATABASE_URL", "invalid");
-    errors.push(db.error);
-  } else if (db.kind === "default") {
-    mark("DATABASE_URL", "default");
-    if (production) warnings.push("DATABASE_URL is not set: using ./data/app.db relative to the working directory. Point it at an absolute path on persistent storage (SQLite supports a single host).");
+  // --- DATABASE_URL (PostgreSQL; no default)
+  if (!filled(env, "DATABASE_URL")) {
+    mark("DATABASE_URL", "missing");
+    const message = "DATABASE_URL is not set. Set it to your PostgreSQL connection string (use the provider's pooled / serverless URL on serverless hosting).";
+    if (production) errors.push(message);
+    else warnings.push(message);
   } else {
-    mark("DATABASE_URL", "present");
-    if (db.kind === "relative" && !/^\.?[\\/]?data[\\/][^\\/]+$/.test(db.rawPath.replace(/^\.[\\/]/, "./"))) {
-      warnings.push("DATABASE_URL is a relative path outside ./data: the file is placed in ./data under its base name. Use an absolute path to avoid surprises.");
+    const dbUrl = parseDatabaseUrl(env.DATABASE_URL);
+    if (!dbUrl.ok) {
+      mark("DATABASE_URL", "invalid");
+      errors.push(dbUrl.error);
+    } else {
+      mark("DATABASE_URL", "present");
+      if (production && !dbUrl.local && !dbUrl.sslmode) {
+        warnings.push("DATABASE_URL has no sslmode. Managed PostgreSQL services require TLS: append ?sslmode=require.");
+      }
     }
   }
 

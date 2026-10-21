@@ -35,9 +35,9 @@ export function backoffSeconds(attempt) {
  * `email` is the delivery status recorded for the email channel
  * (QUEUED | SKIPPED) or null when email was not requested / not created.
  */
-export function notify({ userId, type, title, message, link = null, eventKey, email = true }) {
+export async function notify({ userId, type, title, message, link = null, eventKey, email = true }) {
   if (!userId || !eventKey) throw new Error("notify requires userId and eventKey");
-  const { notification, created } = createNotification({
+  const { notification, created } = await createNotification({
     userId,
     type,
     title: String(title).slice(0, MAX_TITLE),
@@ -48,7 +48,7 @@ export function notify({ userId, type, title, message, link = null, eventKey, em
   if (!created || !email) return { created, notificationId: notification.id, email: null };
 
   // Decide the email channel state at creation time.
-  const user = findUserById(userId);
+  const user = await findUserById(userId);
   let status = "QUEUED";
   let reason = null;
   if (!getEmailConfig()) {
@@ -60,11 +60,11 @@ export function notify({ userId, type, title, message, link = null, eventKey, em
   } else if (!isValidRecipient(user.email)) {
     status = "SKIPPED";
     reason = "invalid_recipient";
-  } else if (!getEmailNotificationsEnabled(userId)) {
+  } else if (!await getEmailNotificationsEnabled(userId)) {
     status = "SKIPPED";
     reason = "user_opted_out";
   }
-  const delivery = enqueueDelivery({ notificationId: notification.id, channel: "EMAIL", status, lastError: reason });
+  const delivery = await enqueueDelivery({ notificationId: notification.id, channel: "EMAIL", status, lastError: reason });
   return { created, notificationId: notification.id, email: delivery.status };
 }
 
@@ -76,7 +76,7 @@ export function notify({ userId, type, title, message, link = null, eventKey, em
 export async function safeNotify(args) {
   let result = null;
   try {
-    result = notify(args);
+    result = await notify(args);
     if (result.email === "QUEUED") await processDeliveries({ limit: 3 });
   } catch (error) {
     console.error("[notifications] could not create/deliver a notification:", error?.code || error?.name || "unknown error");
@@ -95,24 +95,24 @@ export async function processDeliveries({ limit = 10, send = sendEmail } = {}) {
   const summary = { processed: 0, sent: 0, retried: 0, failed: 0, skipped: 0 };
   if (!getEmailConfig()) return summary;
 
-  for (const d of listDueDeliveries({ limit })) {
-    if (!claimDelivery(d.id)) continue;
+  for (const d of await listDueDeliveries({ limit })) {
+    if (!await claimDelivery(d.id)) continue;
     summary.processed += 1;
     const attempt = d.attempts + 1;
 
     if (d.userStatus !== "ACTIVE") {
-      markDeliverySkipped(d.id, "inactive_user");
+      await markDeliverySkipped(d.id, "inactive_user");
       summary.skipped += 1;
       continue;
     }
     // Honour an opt-out made after the email was queued.
     if (!d.userEmailEnabled) {
-      markDeliverySkipped(d.id, "user_opted_out");
+      await markDeliverySkipped(d.id, "user_opted_out");
       summary.skipped += 1;
       continue;
     }
     if (!isValidRecipient(d.userEmail)) {
-      markDeliverySkipped(d.id, "invalid_recipient");
+      await markDeliverySkipped(d.id, "invalid_recipient");
       summary.skipped += 1;
       continue;
     }
@@ -121,13 +121,13 @@ export async function processDeliveries({ limit = 10, send = sendEmail } = {}) {
     const result = await send({ to: d.userEmail, ...content });
 
     if (result.ok) {
-      markDeliverySent(d.id, result.providerMessageId);
+      await markDeliverySent(d.id, result.providerMessageId);
       summary.sent += 1;
     } else if (result.retryable && attempt < d.maxAttempts) {
-      requeueDelivery(d.id, result.code, backoffSeconds(attempt));
+      await requeueDelivery(d.id, result.code, backoffSeconds(attempt));
       summary.retried += 1;
     } else {
-      markDeliveryFailed(d.id, result.code);
+      await markDeliveryFailed(d.id, result.code);
       summary.failed += 1;
     }
   }

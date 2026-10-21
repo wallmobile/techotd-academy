@@ -11,7 +11,7 @@ import {
   getStudentProfileRowByUserId,
   listTrainerBatchRows,
   countActiveUsersWithRole,
-  updateUserStatusRow,
+  updateUserStatusGuarded,
 } from "@/lib/db/adminQueries";
 import { deleteAllSessionsForUser } from "@/lib/db/sessions";
 import { USER_STATUSES } from "@/lib/auth/roles";
@@ -20,8 +20,8 @@ const EMPTY_PAGE = { rows: [], page: 1, totalPages: 1, pageSize: PAGE_SIZE, tota
 
 export async function getUsersPage({ q, role, sort, page }) {
   if (!(await getAdminContext())) return EMPTY_PAGE;
-  const probe = paginate(listUsersPage({ q, role, sort, limit: 1, offset: 0 }).total, page);
-  const { rows, total } = listUsersPage({
+  const probe = paginate((await listUsersPage({ q, role, sort, limit: 1, offset: 0 })).total, page);
+  const { rows, total } = await listUsersPage({
     q,
     role,
     sort,
@@ -36,14 +36,14 @@ export async function getUsersPage({ q, role, sort, page }) {
 export async function getUserDetail(userId) {
   const ctx = await getAdminContext();
   if (!ctx) return null;
-  const user = getUserRow(userId);
+  const user = await getUserRow(userId);
   if (!user) return null;
 
   return {
     user,
-    canChangeStatus: canChangeStatus(ctx, user).ok,
-    studentProfileId: user.role === "STUDENT" ? getStudentProfileRowByUserId(user.id)?.id ?? null : null,
-    assignedBatchCount: user.role === "TRAINER" ? listTrainerBatchRows(user.id).length : null,
+    canChangeStatus: (await canChangeStatus(ctx, user)).ok,
+    studentProfileId: user.role === "STUDENT" ? (await getStudentProfileRowByUserId(user.id))?.id ?? null : null,
+    assignedBatchCount: user.role === "TRAINER" ? (await listTrainerBatchRows(user.id)).length : null,
   };
 }
 
@@ -52,7 +52,7 @@ export async function getUserDetail(userId) {
 //  - ADMIN/SUPER_ADMIN accounts only by a SUPER_ADMIN (an ADMIN can't
 //    disable a peer or a superior);
 //  - the last ACTIVE SUPER_ADMIN can never be deactivated.
-function canChangeStatus(ctx, target, nextStatus) {
+async function canChangeStatus(ctx, target, nextStatus) {
   if (target.id === ctx.user.id) return { ok: false, reason: "You can't change your own account status." };
   if (["ADMIN", "SUPER_ADMIN"].includes(target.role) && !ctx.isSuperAdmin) {
     return { ok: false, reason: "Only a Super Admin can change an admin account." };
@@ -62,7 +62,7 @@ function canChangeStatus(ctx, target, nextStatus) {
     nextStatus !== "ACTIVE" &&
     target.role === "SUPER_ADMIN" &&
     target.status === "ACTIVE" &&
-    countActiveUsersWithRole("SUPER_ADMIN") <= 1
+    await countActiveUsersWithRole("SUPER_ADMIN") <= 1
   ) {
     return { ok: false, reason: "The last active Super Admin can't be deactivated." };
   }
@@ -77,13 +77,14 @@ export async function setUserStatus(targetUserId, status) {
   if (!ctx) return { ok: false, reason: "You don't have permission to do that." };
   if (!USER_STATUSES.includes(status)) return { ok: false, reason: "Invalid status." };
 
-  const target = getUserRow(targetUserId);
+  const target = await getUserRow(targetUserId);
   if (!target) return { ok: false, reason: "User not found." };
 
-  const decision = canChangeStatus(ctx, target, status);
+  const decision = await canChangeStatus(ctx, target, status);
   if (!decision.ok) return decision;
 
-  updateUserStatusRow(target.id, status);
-  if (status !== "ACTIVE") deleteAllSessionsForUser(target.id);
+  const written = await updateUserStatusGuarded(target.id, status);
+  if (!written.ok) return { ok: false, reason: written.reason === "last_super_admin" ? "The last active Super Admin can't be deactivated." : "User not found." };
+  if (status !== "ACTIVE") await deleteAllSessionsForUser(target.id);
   return { ok: true, userId: target.id, status };
 }

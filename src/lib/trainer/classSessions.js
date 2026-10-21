@@ -14,11 +14,11 @@ export async function getClassSessionDetailForTrainer(classSessionId) {
   const ctx = await getTrainerContext();
   if (!ctx) return null;
 
-  const session = getClassSessionById(classSessionId);
+  const session = await getClassSessionById(classSessionId);
   if (!session) return null;
   if (!ctx.batchIds.includes(session.batchId)) return null;
 
-  const assignedBatches = enrichAssignedBatches(ctx.batchIds);
+  const assignedBatches = await enrichAssignedBatches(ctx.batchIds);
   const assigned = assignedBatches.find((ab) => ab.batch.id === session.batchId);
   if (!assigned) return null;
 
@@ -31,5 +31,5 @@ export async function getClassSessionDetailForTrainer(classSessionId) {
 export async function getMyBatchOptions() {
   const ctx = await getTrainerContext();
   if (!ctx) return [];
-  return enrichAssignedBatches(ctx.batchIds);
+  return await enrichAssignedBatches(ctx.batchIds);
 }

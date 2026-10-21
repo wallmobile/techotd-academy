@@ -35,10 +35,10 @@ function totalPagesFor(total) {
   return Math.max(1, Math.ceil(total / LEADS_PAGE_SIZE));
 }
 
-function decorate(lead) {
+async function decorate(lead) {
   return {
     ...lead,
-    courseTitle: lead.courseSlug ? getCourse(lead.courseSlug)?.title ?? lead.courseSlug : null,
+    courseTitle: lead.courseSlug ? (await getCourse(lead.courseSlug))?.title ?? lead.courseSlug : null,
     modeLabel: lead.mode ? getTrainingModeBySlug(lead.mode)?.title ?? lead.mode : null,
   };
 }
@@ -46,7 +46,7 @@ function decorate(lead) {
 export async function getLeadSummary() {
   const ctx = await getCrmContext();
   if (!ctx) return null;
-  const byStatus = countLeadsByStatus(ctx.scopeUserId);
+  const byStatus = await countLeadsByStatus(ctx.scopeUserId);
   return { byStatus, total: Object.values(byStatus).reduce((a, b) => a + b, 0) };
 }
 
@@ -56,15 +56,15 @@ export async function getLeadFilterOptions() {
   const ctx = await getCrmContext();
   if (!ctx) return null;
   return {
-    courses: listDistinctLeadValues("course_slug", ctx.scopeUserId).map((slug) => ({
+    courses: await Promise.all((await listDistinctLeadValues("course_slug", ctx.scopeUserId)).map(async (slug) => ({
       value: slug,
-      label: getCourse(slug)?.title ?? slug,
-    })),
-    modes: listDistinctLeadValues("mode", ctx.scopeUserId).map((slug) => ({
+      label: (await getCourse(slug))?.title ?? slug,
+    }))),
+    modes: (await listDistinctLeadValues("mode", ctx.scopeUserId)).map((slug) => ({
       value: slug,
       label: getTrainingModeBySlug(slug)?.title ?? slug,
     })),
-    assignees: ctx.isManager ? listActiveUsersWithRoles(LEAD_ASSIGNABLE_ROLES) : [],
+    assignees: ctx.isManager ? await listActiveUsersWithRoles(LEAD_ASSIGNABLE_ROLES) : [],
     isManager: ctx.isManager,
   };
 }
@@ -79,11 +79,11 @@ export async function getLeadsPage({ q, status, source, course, mode, assigned, 
   else if (!ctx.isManager && assigned && assigned !== "unassigned") assignedFilter = ctx.user.id; // counsellors can't filter by other people
 
   const filters = { q, status, source, course, mode, assigned: assignedFilter, sort, scopeUserId: ctx.scopeUserId };
-  const probe = listLeads({ ...filters, limit: 1, offset: 0 });
+  const probe = await listLeads({ ...filters, limit: 1, offset: 0 });
   const pages = totalPagesFor(probe.total);
   const current = Math.min(Math.max(1, page || 1), pages);
-  const { rows, total } = listLeads({ ...filters, limit: LEADS_PAGE_SIZE, offset: (current - 1) * LEADS_PAGE_SIZE });
-  return { rows: rows.map(decorate), page: current, totalPages: pages, pageSize: LEADS_PAGE_SIZE, total };
+  const { rows, total } = await listLeads({ ...filters, limit: LEADS_PAGE_SIZE, offset: (current - 1) * LEADS_PAGE_SIZE });
+  return { rows: await Promise.all(rows.map(decorate)), page: current, totalPages: pages, pageSize: LEADS_PAGE_SIZE, total };
 }
 
 // Lead + notes + what this actor may do. Null for "doesn't exist" and
@@ -91,30 +91,30 @@ export async function getLeadsPage({ q, status, source, course, mode, assigned, 
 export async function getLeadDetail(leadId) {
   const ctx = await getCrmContext();
   if (!ctx) return null;
-  const lead = getLeadById(leadId);
+  const lead = await getLeadById(leadId);
   if (!lead || !canViewLead(ctx, lead)) return null;
 
-  const batch = lead.batchId ? getBatch(lead.batchId) : null;
+  const batch = lead.batchId ? await getBatch(lead.batchId) : null;
   const canModify = canModifyLead(ctx, lead);
   return {
-    lead: decorate(lead),
-    batchLabel: batch ? `${getCourse(batch.courseSlug)?.title ?? batch.courseSlug} — ${batch.mode} (${batch.startDate})` : null,
-    notes: listLeadNotes(lead.id),
+    lead: await decorate(lead),
+    batchLabel: batch ? `${(await getCourse(batch.courseSlug))?.title ?? batch.courseSlug} — ${batch.mode} (${batch.startDate})` : null,
+    notes: await listLeadNotes(lead.id),
     permissions: {
       canModify,
       canAssign: ctx.isManager,
       canClaim: !ctx.isManager && lead.assignedTo === null,
     },
-    assignees: ctx.isManager ? listActiveUsersWithRoles(LEAD_ASSIGNABLE_ROLES) : [],
+    assignees: ctx.isManager ? await listActiveUsersWithRoles(LEAD_ASSIGNABLE_ROLES) : [],
     // Conversion is a manager-only operation (it creates accounts); the
     // converted-student card is shown to managers only.
     canConvert: ctx.isManager && !lead.convertedUserId,
-    convertedStudent: ctx.isManager && lead.convertedUserId ? getEnrollmentsForConvertedStudent(lead.convertedUserId) : null,
+    convertedStudent: ctx.isManager && lead.convertedUserId ? await getEnrollmentsForConvertedStudent(lead.convertedUserId) : null,
   };
 }
 
-function loadModifiable(ctx, leadId) {
-  const lead = getLeadById(leadId);
+async function loadModifiable(ctx, leadId) {
+  const lead = await getLeadById(leadId);
   if (!lead || !canViewLead(ctx, lead)) return { error: { ok: false, reason: "Lead not found." } };
   if (!canModifyLead(ctx, lead)) return { error: DENIED };
   return { lead };
@@ -124,9 +124,9 @@ export async function updateLeadStatus(leadId, status) {
   const ctx = await getCrmContext();
   if (!ctx) return DENIED;
   if (!LEAD_STATUSES.includes(status)) return { ok: false, reason: "Invalid status." };
-  const { lead, error } = loadModifiable(ctx, leadId);
+  const { lead, error } = await loadModifiable(ctx, leadId);
   if (error) return error;
-  updateLeadStatusRow(lead.id, status);
+  await updateLeadStatusRow(lead.id, status);
   return { ok: true, leadId: lead.id };
 }
 
@@ -135,9 +135,9 @@ export async function updateLeadStatus(leadId, status) {
 export async function markLeadContacted(leadId) {
   const ctx = await getCrmContext();
   if (!ctx) return DENIED;
-  const { lead, error } = loadModifiable(ctx, leadId);
+  const { lead, error } = await loadModifiable(ctx, leadId);
   if (error) return error;
-  markLeadContactedRow(lead.id);
+  await markLeadContactedRow(lead.id);
   return { ok: true, leadId: lead.id };
 }
 
@@ -147,28 +147,28 @@ export async function assignLead(leadId, targetUserId) {
   const ctx = await getCrmContext();
   if (!ctx) return DENIED;
 
-  const lead = getLeadById(leadId);
+  const lead = await getLeadById(leadId);
   if (!lead || !canViewLead(ctx, lead)) return { ok: false, reason: "Lead not found." };
 
   if (!ctx.isManager) {
     if (lead.assignedTo !== null || targetUserId !== ctx.user.id) return DENIED;
-    assignLeadRow(lead.id, ctx.user.id);
+    await assignLeadRow(lead.id, ctx.user.id);
     return { ok: true, leadId: lead.id };
   }
   // (a counsellor claiming for themselves needs no notification)
 
   if (!targetUserId) {
-    assignLeadRow(lead.id, null);
+    await assignLeadRow(lead.id, null);
     return { ok: true, leadId: lead.id };
   }
-  const target = getUserNameRole(targetUserId);
+  const target = await getUserNameRole(targetUserId);
   if (!target || target.status !== "ACTIVE" || !LEAD_ASSIGNABLE_ROLES.includes(target.role)) {
     return { ok: false, reason: "Please choose a valid person to assign this lead to." };
   }
-  assignLeadRow(lead.id, target.id);
+  await assignLeadRow(lead.id, target.id);
   // Tell the new assignee — only on a real change, and not when assigning to yourself.
   if (lead.assignedTo !== target.id && target.id !== ctx.user.id) {
-    await notifyLeadAssigned({ userId: target.id, leadId: lead.id, stamp: getLeadById(lead.id)?.updatedAt ?? "" });
+    await notifyLeadAssigned({ userId: target.id, leadId: lead.id, stamp: (await getLeadById(lead.id))?.updatedAt ?? "" });
   }
   return { ok: true, leadId: lead.id };
 }
@@ -179,9 +179,9 @@ export async function addNote(leadId, rawNote) {
   const note = typeof rawNote === "string" ? rawNote.trim() : "";
   if (!note) return { ok: false, reason: "Please enter a note." };
   if (note.length > NOTE_MAX_LENGTH) return { ok: false, reason: `Notes can be at most ${NOTE_MAX_LENGTH} characters.` };
-  const { lead, error } = loadModifiable(ctx, leadId);
+  const { lead, error } = await loadModifiable(ctx, leadId);
   if (error) return error;
-  addLeadNoteRow({ leadId: lead.id, authorUserId: ctx.user.id, note });
+  await addLeadNoteRow({ leadId: lead.id, authorUserId: ctx.user.id, note });
   return { ok: true, leadId: lead.id };
 }
 
@@ -205,11 +205,11 @@ export async function convertLeadToStudent(leadId, rawPassword) {
   const ctx = await getCrmContext();
   if (!ctx || !ctx.isManager) return DENIED;
 
-  const lead = getLeadById(leadId);
+  const lead = await getLeadById(leadId);
   if (!lead) return { ok: false, reason: CONVERT_MESSAGES.not_found };
   if (lead.convertedUserId) return { ok: false, reason: CONVERT_MESSAGES.already_converted };
 
-  const existing = findUserByEmailInternal(lead.email);
+  const existing = await findUserByEmailInternal(lead.email);
   let existingUserId = null;
   let newStudent = null;
   if (existing) {
@@ -227,7 +227,7 @@ export async function convertLeadToStudent(leadId, rawPassword) {
     };
   }
 
-  const result = convertLeadTx({ leadId: lead.id, existingUserId, newStudent });
+  const result = await convertLeadTx({ leadId: lead.id, existingUserId, newStudent });
   if (!result.ok) return { ok: false, reason: CONVERT_MESSAGES[result.reason] || "Could not convert this lead." };
   return { ok: true, leadId: lead.id, userId: result.userId, created: result.created };
 }

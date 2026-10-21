@@ -62,13 +62,13 @@ function parseStart(startsOn) {
   return { month: part({ month: "short" }).toUpperCase(), day: part({ day: "2-digit" }) };
 }
 
-export function CourseDetailHero({ course }) {
+export async function CourseDetailHero({ course }) {
   const words = course.title.split(" ");
   const lessonCount = course.modules.reduce(
     (total, module) => total + module.items.filter((item) => item.type === "lesson").length,
     0
   );
-  const nextBatch = listBatches({ publicOnly: true, courseSlug: course.slug })[0];
+  const nextBatch = (await listBatches({ publicOnly: true, courseSlug: course.slug }))[0];
   const start = nextBatch ? parseStart(nextBatch.startsOn) : null;
   const duration = displayDuration(course);
   const stats = [

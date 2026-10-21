@@ -17,11 +17,11 @@ async function getEnrollmentContext() {
   const user = await getCurrentUser();
   if (!user || user.role !== "STUDENT") return null;
 
-  const profile = getOrCreateStudentProfile(user.id);
-  const courseEnrollments = listCourseEnrollmentsForStudent(profile.id).filter(
+  const profile = await getOrCreateStudentProfile(user.id);
+  const courseEnrollments = (await listCourseEnrollmentsForStudent(profile.id)).filter(
     (e) => e.status !== "CANCELLED"
   );
-  const batchEnrollments = listBatchEnrollmentsForStudent(profile.id).filter(
+  const batchEnrollments = (await listBatchEnrollmentsForStudent(profile.id)).filter(
     (e) => e.status !== "CANCELLED"
   );
 
@@ -52,15 +52,15 @@ export async function getMyAssignments() {
   const ctx = await getEnrollmentContext();
   if (!ctx) return [];
 
-  const assignments = listVisibleAssignmentsForCourseSlugs([...ctx.courseSlugs]).filter((a) =>
+  const assignments = (await listVisibleAssignmentsForCourseSlugs([...ctx.courseSlugs])).filter((a) =>
     isAssignmentVisibleTo(a, ctx)
   );
 
-  return assignments.map((assignment) => ({
+  return await Promise.all(assignments.map(async (assignment) => ({
     ...assignment,
-    course: getCourse(assignment.courseSlug),
-    submission: getSubmissionForStudentAssignment(ctx.profile.id, assignment.id),
-  }));
+    course: await getCourse(assignment.courseSlug),
+    submission: await getSubmissionForStudentAssignment(ctx.profile.id, assignment.id),
+  })));
 }
 
 // Assignment detail for /student/assignments/[assignment-id]. Returns
@@ -72,14 +72,14 @@ export async function getAssignmentDetailForStudent(assignmentId) {
   const ctx = await getEnrollmentContext();
   if (!ctx) return null;
 
-  const assignment = getVisibleAssignmentById(assignmentId);
+  const assignment = await getVisibleAssignmentById(assignmentId);
   if (!assignment) return null;
   if (!isAssignmentVisibleTo(assignment, ctx)) return null;
 
-  const course = getCourse(assignment.courseSlug);
+  const course = await getCourse(assignment.courseSlug);
   if (!course) return null;
 
-  const submission = getSubmissionForStudentAssignment(ctx.profile.id, assignment.id);
+  const submission = await getSubmissionForStudentAssignment(ctx.profile.id, assignment.id);
 
   return { assignment, course, submission };
 }
@@ -96,7 +96,7 @@ export async function getMyCourseProjects() {
 
   const projects = [];
   for (const courseSlug of ctx.courseSlugs) {
-    const course = getCourse(courseSlug);
+    const course = await getCourse(courseSlug);
     if (!course) continue;
     const curriculum = getCourseCurriculum(course);
     for (const lesson of curriculum.flatLessons) {

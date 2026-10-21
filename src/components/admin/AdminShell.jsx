@@ -8,7 +8,7 @@ import { AdminShellClient } from "@/components/admin/AdminShellClient";
  * page having to fetch it.
  */
 export async function AdminShell({ user, title, navItems, brand, children }) {
-  const unreadCount = user?.id ? countUnreadForUser(user.id) : 0;
+  const unreadCount = user?.id ? await countUnreadForUser(user.id) : 0;
   return (
     <AdminShellClient user={user} title={title} unreadCount={unreadCount} navItems={navItems} brand={brand}>
       {children}

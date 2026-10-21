@@ -5,9 +5,9 @@ import { CourseCard } from "@/components/courses/CourseCard";
 import { Gradient } from "@/components/training/icons";
 import { getCourse } from "@/lib/catalog";
 
-export function RelatedTrainingCourses({ trainingMode }) {
-  const courses = trainingMode.relatedCourses
-    .map((slug) => getCourse(slug, { publishedOnly: true }))
+export async function RelatedTrainingCourses({ trainingMode }) {
+  const courses = (await Promise.all(trainingMode.relatedCourses
+    .map(async (slug) => await getCourse(slug, { publishedOnly: true }))))
     .filter(Boolean);
 
   if (courses.length === 0) return null;

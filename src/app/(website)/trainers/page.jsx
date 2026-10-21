@@ -45,9 +45,9 @@ const COURSE_BY_ROLE = [
   ["Python", "python-development"],
 ];
 
-function courseFor(trainer) {
+async function courseFor(trainer) {
   const match = COURSE_BY_ROLE.find(([keyword]) => trainer.role.includes(keyword));
-  const course = match ? getCourse(match[1], { publishedOnly: true }) : null;
+  const course = match ? await getCourse(match[1], { publishedOnly: true }) : null;
   return course ? { slug: course.slug, title: course.title, initials: course.initials } : null;
 }
 
@@ -114,9 +114,9 @@ function MentorCollage() {
   );
 }
 
-export default function TrainersPage() {
+export default async function TrainersPage() {
   const areas = new Set(trainers.map((trainer) => trainer.role.split(" ")[0])).size;
-  const enrichedTrainers = trainers.map((trainer) => ({ ...trainer, course: courseFor(trainer) }));
+  const enrichedTrainers = await Promise.all(trainers.map(async (trainer) => ({ ...trainer, course: await courseFor(trainer) })));
 
   return (
     <>

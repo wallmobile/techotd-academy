@@ -20,15 +20,15 @@ export const metadata = {
 // Query params are visitor-controlled input — every value is validated
 // against real data before it's trusted, and anything invalid is
 // silently dropped rather than shown or crashing the page.
-function readParams(searchParams) {
+async function readParams(searchParams) {
   const courseParam = typeof searchParams.course === "string" ? searchParams.course : "";
   const modeParam = typeof searchParams.mode === "string" ? searchParams.mode : "";
   const batchParam = typeof searchParams.batch === "string" ? searchParams.batch : "";
   const sourceParam = typeof searchParams.source === "string" ? searchParams.source : "";
 
-  const course = getCourse(courseParam, { publishedOnly: true }) ? courseParam : "";
+  const course = await getCourse(courseParam, { publishedOnly: true }) ? courseParam : "";
   const mode = getTrainingModeBySlug(modeParam) ? modeParam : "";
-  const batchMatch = listBatches({ publicOnly: true }).find(
+  const batchMatch = (await listBatches({ publicOnly: true })).find(
     (batch) => batch.id === batchParam && (!course || batch.courseSlug === course)
   );
   const batch = batchMatch ? batchMatch.id : "";
@@ -39,7 +39,7 @@ function readParams(searchParams) {
 
 export default async function BookDemoPage({ searchParams }) {
   const resolvedSearchParams = await searchParams;
-  const { course, mode, batch, source } = readParams(resolvedSearchParams);
+  const { course, mode, batch, source } = await readParams(resolvedSearchParams);
 
   return (
     <EnquiryShell variant="book-demo">
@@ -49,8 +49,8 @@ export default async function BookDemoPage({ searchParams }) {
         initialMode={mode}
         initialBatch={batch}
         source={source}
-        courses={listCourses({ publishedOnly: true }).map((c) => ({ slug: c.slug, title: c.title }))}
-        batches={listBatches({ publicOnly: true })}
+        courses={(await listCourses({ publishedOnly: true })).map((c) => ({ slug: c.slug, title: c.title }))}
+        batches={await listBatches({ publicOnly: true })}
       />
     </EnquiryShell>
   );

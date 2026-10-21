@@ -5,24 +5,20 @@ import { db } from "@/lib/db/client";
 // sizes — NEVER the prompt or the answer. Used for the per-user daily cap and
 // for operators to see usage.
 
-export function recordAiUsage({ userId, feature, outcome, inputChars = 0, outputChars = 0, inputTokens = null, outputTokens = null }) {
-  db.prepare(
+export async function recordAiUsage({ userId, feature, outcome, inputChars = 0, outputChars = 0, inputTokens = null, outputTokens = null }) {
+  await db.run(
     `INSERT INTO ai_usage (id, user_id, feature, outcome, input_chars, output_chars, input_tokens, output_tokens)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(crypto.randomUUID(), userId, feature, outcome, inputChars, outputChars, inputTokens, outputTokens);
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [crypto.randomUUID(), userId, feature, outcome, inputChars, outputChars, inputTokens, outputTokens]
+  );
 }
 
 // Provider calls this user has made since the start of the current UTC day.
-export function countAiCallsToday(userId) {
-  return db
-    .prepare("SELECT COUNT(*) AS c FROM ai_usage WHERE user_id = ? AND outcome != 'blocked' AND created_at >= date('now')")
-    .get(userId).c;
+export async function countAiCallsToday(userId) {
+  const row = await db.get("SELECT COUNT(*) AS c FROM ai_usage WHERE user_id = ? AND outcome != 'blocked' AND created_at >= left(app_now(), 10)", [userId]);
+  return row.c;
 }
 
-export function aiUsageSummary() {
-  return db
-    .prepare(
-      `SELECT feature, outcome, COUNT(*) AS c FROM ai_usage WHERE created_at >= datetime('now', '-30 days') GROUP BY feature, outcome`
-    )
-    .all();
+export async function aiUsageSummary() {
+  return await db.all("SELECT feature, outcome, COUNT(*) AS c FROM ai_usage WHERE created_at >= app_now('-30 days') GROUP BY feature, outcome");
 }

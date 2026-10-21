@@ -22,7 +22,7 @@ export default async function TrainerNotificationsPage({ searchParams }) {
           <h2 className="text-xl font-semibold tracking-tight text-dark">Notifications</h2>
           <p className="mt-1 text-sm text-muted">Updates that concern you.</p>
         </div>
-        <EmailPreferenceForm enabled={getEmailNotificationsEnabled(user.id)} />
+        <EmailPreferenceForm enabled={await getEmailNotificationsEnabled(user.id)} />
         <NotificationFeed feed={feed} basePath="/trainer/notifications" />
       </div>
     </TrainerShell>

@@ -3,8 +3,8 @@ import { db } from "@/lib/db/client";
 
 // Re-exported for backward compatibility (server-only call sites) — the
 // values themselves live in src/constants/lmsStatuses.js so a "use
-// client" form can read them without pulling this DB module (and
-// better-sqlite3) into the browser bundle.
+// client" form can read them without pulling this DB module (and the
+// database driver) into the browser bundle.
 export { CLASS_SESSION_STATUSES } from "@/constants/lmsStatuses";
 
 function rowToSession(row) {
@@ -29,53 +29,49 @@ function rowToSession(row) {
 // src/lib/student/batches.js) — never a batchId taken directly from a
 // query parameter. Returns every session for those batches ordered
 // chronologically; callers decide what "upcoming" vs "past" means.
-export function listSessionsForBatchIds(batchIds) {
+export async function listSessionsForBatchIds(batchIds) {
   if (!batchIds || batchIds.length === 0) return [];
   const placeholders = batchIds.map(() => "?").join(", ");
-  return db
-    .prepare(
-      `SELECT * FROM class_sessions WHERE batch_id IN (${placeholders}) ORDER BY session_date ASC, start_time ASC`
-    )
-    .all(...batchIds)
-    .map(rowToSession);
+  const rows = await db.all(
+    `SELECT * FROM class_sessions WHERE batch_id IN (${placeholders}) ORDER BY session_date ASC, start_time ASC, id ASC`,
+    batchIds
+  );
+  return rows.map(rowToSession);
 }
 
 // Used only to enrich an attendance record with its session's date/title
 // when it has one (src/lib/student/attendance.js) — classSessionId is
 // nullable on attendance_records, so callers must handle a null id
 // themselves before calling this.
-export function getClassSessionById(id) {
-  return rowToSession(db.prepare("SELECT * FROM class_sessions WHERE id = ?").get(id));
+export async function getClassSessionById(id) {
+  return rowToSession(await db.get("SELECT * FROM class_sessions WHERE id = ?", [id]));
 }
 
-// Trainer scheduling (Phase 9.2) — this is exactly the write path the
-// Phase 8.5 comment above anticipated ("a future admin phase"), now used
-// by src/lib/trainer/classSessions.js. `batchId` must already be
-// confirmed as one of the CALLER'S own assigned batches before this is
-// ever invoked — this function itself does no ownership checking, same
-// division of responsibility as every other src/lib/db/* module (checks
-// happen one layer up, in src/lib/trainer/*.js).
-export function createClassSession({ batchId, title, sessionDate, startTime, endTime, meetingUrl, location }) {
+// Trainer scheduling (Phase 9.2). `batchId` must already be confirmed as
+// one of the CALLER'S own assigned batches before this is ever invoked —
+// this function itself does no ownership checking (checks happen one
+// layer up, in src/lib/trainer/*.js).
+export async function createClassSession({ batchId, title, sessionDate, startTime, endTime, meetingUrl, location }) {
   const id = crypto.randomUUID();
-  db.prepare(
+  await db.run(
     `INSERT INTO class_sessions (id, batch_id, title, session_date, start_time, end_time, meeting_url, location)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(id, batchId, title, sessionDate, startTime, endTime, meetingUrl || null, location || null);
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [id, batchId, title, sessionDate, startTime, endTime, meetingUrl || null, location || null]
+  );
 
-  return rowToSession(db.prepare("SELECT * FROM class_sessions WHERE id = ?").get(id));
+  return await getClassSessionById(id);
 }
 
-// Trainer editing an existing session (Phase 9.2). `updates` is a plain
-// object of only the columns to change — same partial-update discipline
-// as updateStudentProfileFields. Ownership must already be verified by
-// the caller before this runs.
-export function updateClassSession(id, { title, sessionDate, startTime, endTime, meetingUrl, location, status }) {
-  db.prepare(
+// Trainer editing an existing session (Phase 9.2). Ownership must already
+// be verified by the caller before this runs.
+export async function updateClassSession(id, { title, sessionDate, startTime, endTime, meetingUrl, location, status }) {
+  await db.run(
     `UPDATE class_sessions
      SET title = ?, session_date = ?, start_time = ?, end_time = ?, meeting_url = ?, location = ?, status = ?,
-         updated_at = datetime('now')
-     WHERE id = ?`
-  ).run(title, sessionDate, startTime, endTime, meetingUrl || null, location || null, status, id);
+         updated_at = app_now()
+     WHERE id = ?`,
+    [title, sessionDate, startTime, endTime, meetingUrl || null, location || null, status, id]
+  );
 
-  return getClassSessionById(id);
+  return await getClassSessionById(id);
 }

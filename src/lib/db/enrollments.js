@@ -16,7 +16,7 @@ import { getOrCreateStudentProfile } from "@/lib/db/studentProfiles";
 const SORTS = {
   newest: "be.enrolled_at DESC, be.id ASC",
   oldest: "be.enrolled_at ASC, be.id ASC",
-  name: "u.name COLLATE NOCASE ASC, be.id ASC",
+  name: "lower(u.name) ASC, be.id ASC",
 };
 export const ENROLLMENT_SORT_KEYS = Object.keys(SORTS);
 
@@ -54,7 +54,7 @@ function buildWhere({ q, status, batchIds }) {
   }
   if (batchIds) {
     // batchIds === [] means "a filter that can match nothing"
-    if (batchIds.length === 0) clauses.push("0");
+    if (batchIds.length === 0) clauses.push("FALSE");
     else {
       clauses.push(`be.batch_id IN (${batchIds.map((_, i) => `@b${i}`).join(", ")})`);
       batchIds.forEach((id, i) => {
@@ -63,44 +63,40 @@ function buildWhere({ q, status, batchIds }) {
     }
   }
   if (q) {
-    clauses.push("(u.name LIKE @q ESCAPE '\\' OR u.email LIKE @q ESCAPE '\\' OR u.phone LIKE @q ESCAPE '\\' OR sp.phone LIKE @q ESCAPE '\\')");
+    clauses.push("(u.name ILIKE @q ESCAPE '\\' OR u.email ILIKE @q ESCAPE '\\' OR u.phone ILIKE @q ESCAPE '\\' OR sp.phone ILIKE @q ESCAPE '\\')");
     params.q = likePattern(q);
   }
   return { where: clauses.length ? `WHERE ${clauses.join(" AND ")}` : "", params };
 }
 
-export function listEnrollments({ sort = "newest", limit = 20, offset = 0, ...filters }) {
+export async function listEnrollments({ sort = "newest", limit = 20, offset = 0, ...filters }) {
   const { where, params } = buildWhere(filters);
   const order = SORTS[sort] || SORTS.newest;
-  const rows = db
-    .prepare(`${SELECT} ${where} ORDER BY ${order} LIMIT @limit OFFSET @offset`)
-    .all({ ...params, limit, offset });
-  const total = db
-    .prepare(
+  const rows = await db.all(`${SELECT} ${where} ORDER BY ${order} LIMIT @limit OFFSET @offset`, { ...params, limit, offset });
+  const total = (
+    await db.get(
       `SELECT COUNT(*) AS c FROM batch_enrollments be
-       JOIN student_profiles sp ON sp.id = be.student_id JOIN users u ON u.id = sp.user_id ${where}`
+       JOIN student_profiles sp ON sp.id = be.student_id JOIN users u ON u.id = sp.user_id ${where}`,
+      params
     )
-    .get(params).c;
+  ).c;
   return { rows: rows.map(rowToEnrollment), total };
 }
 
-export function getEnrollmentById(id) {
+export async function getEnrollmentById(id) {
   if (!id || typeof id !== "string") return null;
-  const row = db.prepare(`${SELECT} WHERE be.id = ?`).get(id);
+  const row = await db.get(`${SELECT} WHERE be.id = ?`, [id]);
   return row ? rowToEnrollment(row) : null;
 }
 
 // Every enrollment (any status) of one student USER, newest first.
-export function listEnrollmentsForUser(userId) {
-  return db
-    .prepare(`${SELECT} WHERE u.id = ? ORDER BY be.enrolled_at DESC, be.id ASC`)
-    .all(userId)
-    .map(rowToEnrollment);
+export async function listEnrollmentsForUser(userId) {
+  return (await db.all(`${SELECT} WHERE u.id = ? ORDER BY be.enrolled_at DESC, be.id ASC`, [userId])).map(rowToEnrollment);
 }
 
-export function countEnrollmentsByStatus() {
+export async function countEnrollmentsByStatus() {
   const counts = { ACTIVE: 0, COMPLETED: 0, CANCELLED: 0 };
-  for (const r of db.prepare("SELECT status, COUNT(*) AS c FROM batch_enrollments GROUP BY status").all()) {
+  for (const r of await db.all("SELECT status, COUNT(*) AS c FROM batch_enrollments GROUP BY status")) {
     counts[r.status] = r.c;
   }
   return counts;
@@ -108,47 +104,46 @@ export function countEnrollmentsByStatus() {
 
 // Active students for the enrollment form's student picker. Search only —
 // capped, never the whole student table.
-export function searchActiveStudents(q, limit = 20) {
-  const where = q ? "AND (u.name LIKE @q ESCAPE '\\' OR u.email LIKE @q ESCAPE '\\' OR u.phone LIKE @q ESCAPE '\\')" : "";
+export async function searchActiveStudents(q, limit = 20) {
+  const where = q ? "AND (u.name ILIKE @q ESCAPE '\\' OR u.email ILIKE @q ESCAPE '\\' OR u.phone ILIKE @q ESCAPE '\\')" : "";
   const params = q ? { q: likePattern(q), limit } : { limit };
-  return db
-    .prepare(
-      `SELECT u.id, u.name, u.email FROM users u
-       WHERE u.role = 'STUDENT' AND u.status = 'ACTIVE' ${where}
-       ORDER BY u.name COLLATE NOCASE ASC LIMIT @limit`
-    )
-    .all(params);
+  return await db.all(
+    `SELECT u.id, u.name, u.email FROM users u
+     WHERE u.role = 'STUDENT' AND u.status = 'ACTIVE' ${where}
+     ORDER BY lower(u.name) ASC, u.id ASC LIMIT @limit`,
+    params
+  );
 }
 
-export function getUserForEnrollment(userId) {
+export async function getUserForEnrollment(userId) {
   if (!userId || typeof userId !== "string") return null;
-  return db.prepare("SELECT id, name, email, role, status FROM users WHERE id = ?").get(userId) ?? null;
+  return (await db.get("SELECT id, name, email, role, status FROM users WHERE id = ?", [userId])) ?? null;
 }
 
 // Course status is DERIVED from the student's batch enrollments in that
 // course: any ACTIVE -> ACTIVE, else any COMPLETED -> COMPLETED, else
 // CANCELLED. `courseBatchIds` are the catalog batch ids of the course.
-function syncCourseEnrollment(profileId, courseSlug, courseBatchIds) {
+// Runs inside the caller's transaction (`t`), which already holds the
+// per-student lock, so the read-then-write below cannot interleave.
+async function syncCourseEnrollment(t, profileId, courseSlug, courseBatchIds) {
+  if (courseBatchIds.length === 0) return;
   const placeholders = courseBatchIds.map(() => "?").join(", ");
-  const statuses = db
-    .prepare(`SELECT status FROM batch_enrollments WHERE student_id = ? AND batch_id IN (${placeholders})`)
-    .all(profileId, ...courseBatchIds)
-    .map((r) => r.status);
+  const statuses = (
+    await t.all(`SELECT status FROM batch_enrollments WHERE student_id = ? AND batch_id IN (${placeholders})`, [profileId, ...courseBatchIds])
+  ).map((r) => r.status);
   if (statuses.length === 0) return;
   const derived = statuses.includes("ACTIVE") ? "ACTIVE" : statuses.includes("COMPLETED") ? "COMPLETED" : "CANCELLED";
 
-  const existing = db
-    .prepare("SELECT id, status FROM course_enrollments WHERE student_id = ? AND course_slug = ?")
-    .get(profileId, courseSlug);
+  const existing = await t.get("SELECT id, status FROM course_enrollments WHERE student_id = ? AND course_slug = ?", [profileId, courseSlug]);
   if (!existing) {
-    db.prepare("INSERT INTO course_enrollments (id, student_id, course_slug, status) VALUES (?, ?, ?, ?)").run(
+    await t.run("INSERT INTO course_enrollments (id, student_id, course_slug, status) VALUES (?, ?, ?, ?)", [
       crypto.randomUUID(),
       profileId,
       courseSlug,
-      derived
-    );
+      derived,
+    ]);
   } else if (existing.status !== derived) {
-    db.prepare("UPDATE course_enrollments SET status = ?, updated_at = datetime('now') WHERE id = ?").run(derived, existing.id);
+    await t.run("UPDATE course_enrollments SET status = ?, updated_at = app_now() WHERE id = ?", [derived, existing.id]);
   }
 }
 
@@ -156,44 +151,40 @@ function syncCourseEnrollment(profileId, courseSlug, courseBatchIds) {
 // enrollment, atomically. Preconditions (student/course/batch validity,
 // batch open) are verified by the caller. Returns
 // { ok: true, enrollmentId, reactivated } or { ok: false, reason }.
-export function createEnrollmentTx({ studentUserId, courseSlug, courseBatchIds, batchId }) {
-  const run = db.transaction(() => {
-    const profile = getOrCreateStudentProfile(studentUserId);
-    const existing = db
-      .prepare("SELECT id, status FROM batch_enrollments WHERE student_id = ? AND batch_id = ?")
-      .get(profile.id, batchId);
+export async function createEnrollmentTx({ studentUserId, courseSlug, courseBatchIds, batchId }) {
+  // The profile row is created (idempotently) outside the transaction so the
+  // transaction body only ever deals with rows that exist.
+  const profile = await getOrCreateStudentProfile(studentUserId);
+  return await db.tx(async (t) => {
+    // Serialize everything for this student: two admins enrolling the same
+    // student in the same batch at once must not both succeed.
+    await t.lock(`enroll:${profile.id}`);
+    const existing = await t.get("SELECT id, status FROM batch_enrollments WHERE student_id = ? AND batch_id = ?", [profile.id, batchId]);
 
     let enrollmentId;
     let reactivated = false;
     if (existing) {
       if (existing.status === "ACTIVE") return { ok: false, reason: "duplicate" };
       if (existing.status === "COMPLETED") return { ok: false, reason: "completed" };
-      db.prepare(
-        "UPDATE batch_enrollments SET status = 'ACTIVE', enrolled_at = datetime('now'), updated_at = datetime('now') WHERE id = ?"
-      ).run(existing.id);
+      await t.run("UPDATE batch_enrollments SET status = 'ACTIVE', enrolled_at = app_now(), updated_at = app_now() WHERE id = ?", [existing.id]);
       enrollmentId = existing.id;
       reactivated = true;
     } else {
       enrollmentId = crypto.randomUUID();
-      db.prepare("INSERT INTO batch_enrollments (id, student_id, batch_id, status) VALUES (?, ?, ?, 'ACTIVE')").run(
-        enrollmentId,
-        profile.id,
-        batchId
-      );
+      await t.run("INSERT INTO batch_enrollments (id, student_id, batch_id, status) VALUES (?, ?, ?, 'ACTIVE')", [enrollmentId, profile.id, batchId]);
     }
-    syncCourseEnrollment(profile.id, courseSlug, courseBatchIds);
+    await syncCourseEnrollment(t, profile.id, courseSlug, courseBatchIds);
     return { ok: true, enrollmentId, reactivated };
   });
-  return run();
 }
 
-export function setEnrollmentStatusTx({ enrollmentId, status, courseSlug, courseBatchIds }) {
-  const run = db.transaction(() => {
-    const row = db.prepare("SELECT student_id FROM batch_enrollments WHERE id = ?").get(enrollmentId);
+export async function setEnrollmentStatusTx({ enrollmentId, status, courseSlug, courseBatchIds }) {
+  return await db.tx(async (t) => {
+    const row = await t.get("SELECT student_id FROM batch_enrollments WHERE id = ?", [enrollmentId]);
     if (!row) return false;
-    db.prepare("UPDATE batch_enrollments SET status = ?, updated_at = datetime('now') WHERE id = ?").run(status, enrollmentId);
-    syncCourseEnrollment(row.student_id, courseSlug, courseBatchIds);
+    await t.lock(`enroll:${row.student_id}`);
+    await t.run("UPDATE batch_enrollments SET status = ?, updated_at = app_now() WHERE id = ?", [status, enrollmentId]);
+    await syncCourseEnrollment(t, row.student_id, courseSlug, courseBatchIds);
     return true;
   });
-  return run();
 }

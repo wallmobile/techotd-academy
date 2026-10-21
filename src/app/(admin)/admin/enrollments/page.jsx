@@ -24,8 +24,8 @@ export default async function AdminEnrollmentsPage({ searchParams }) {
   const { user } = await requireAdminContext();
   const params = parseEnrollmentParams(await searchParams);
   const result = await getEnrollmentsPage(params);
-  const courseOptions = getCourseFilterOptions();
-  const batchOptions = getBatchFilterOptions().filter((b) => !params.course || b.courseSlug === params.course);
+  const courseOptions = await getCourseFilterOptions();
+  const batchOptions = (await getBatchFilterOptions()).filter((b) => !params.course || b.courseSlug === params.course);
   const hasFilters = params.q || params.course || params.batch || params.status || params.sort !== "newest";
 
   const columns = [

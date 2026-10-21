@@ -10,7 +10,7 @@ export function cn(...inputs) {
 }
 
 /**
- * Formats a SQLite datetime('now') value ("YYYY-MM-DD HH:MM:SS", UTC) for
+ * Formats a database timestamp (app_now(): "YYYY-MM-DD HH:MM:SS", UTC) for
  * display. Returns an em dash for empty input.
  */
 export function formatDbDate(value) {

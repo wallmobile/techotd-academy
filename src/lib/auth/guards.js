@@ -37,5 +37,5 @@ export async function requireRole(allowedRoles, loginRedirectTo = "/login") {
 // Convenience wrapper for the three placeholder areas (student/trainer/
 // admin), so pages don't need to know the exact role list for their area.
 export async function requireArea(area) {
-  return requireRole(rolesForArea(area));
+  return await requireRole(rolesForArea(area));
 }

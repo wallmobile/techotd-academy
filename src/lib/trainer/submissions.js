@@ -22,7 +22,7 @@ export async function getSubmissionsForAssignment(assignmentId) {
 
   // Only submissions from students in this trainer's own batches — not
   // every submission for the (possibly shared) course.
-  const submissions = listSubmissionsForAssignmentInBatches(assignmentId, detail.reviewBatchIds);
+  const submissions = await listSubmissionsForAssignmentInBatches(assignmentId, detail.reviewBatchIds);
   return { ...detail, submissions };
 }
 
@@ -31,7 +31,7 @@ export async function getSubmissionsForAssignment(assignmentId) {
 // writing score/feedback/status — never trusted merely because the form
 // included an assignmentId alongside the submissionId.
 export async function evaluateManagedSubmission(submissionId, { status, score, feedback }) {
-  const submission = getSubmissionById(submissionId);
+  const submission = await getSubmissionById(submissionId);
   if (!submission) return { ok: false };
 
   const detail = await getAssignmentDetailForTrainer(submission.assignmentId);
@@ -40,8 +40,8 @@ export async function evaluateManagedSubmission(submissionId, { status, score, f
   // The submission's STUDENT must also be one of this trainer's own
   // (enrolled in a batch they manage) — owning the assignment alone is not
   // enough when another trainer teaches the same course.
-  if (!isSubmissionInBatches(submissionId, detail.reviewBatchIds)) return { ok: false };
+  if (!await isSubmissionInBatches(submissionId, detail.reviewBatchIds)) return { ok: false };
 
-  const updated = evaluateSubmission(submissionId, { status, score, feedback });
+  const updated = await evaluateSubmission(submissionId, { status, score, feedback });
   return { ok: true, submission: updated };
 }

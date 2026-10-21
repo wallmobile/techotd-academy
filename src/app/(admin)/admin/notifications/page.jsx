@@ -29,7 +29,7 @@ export default async function AdminNotificationsPage({ searchParams }) {
             </Link>
           )}
         </AdminPageHeader>
-        <EmailPreferenceForm enabled={getEmailNotificationsEnabled(user.id)} />
+        <EmailPreferenceForm enabled={await getEmailNotificationsEnabled(user.id)} />
         <NotificationFeed feed={feed} basePath="/admin/notifications" />
       </div>
     </AdminShell>

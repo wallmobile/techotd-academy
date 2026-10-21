@@ -16,7 +16,7 @@ export default async function AdminNewBatchPage({ searchParams }) {
   const sp = (await searchParams) || {};
   const requested = Array.isArray(sp.course) ? sp.course[0] : sp.course;
   // Prefill only: an unknown course is silently dropped (the server re-validates on submit).
-  const presetCourse = typeof requested === "string" && getCourse(requested) ? requested : "";
+  const presetCourse = typeof requested === "string" && await getCourse(requested) ? requested : "";
 
   return (
     <AdminShell user={user} title="Batches">
@@ -28,7 +28,7 @@ export default async function AdminNewBatchPage({ searchParams }) {
           backLabel="Back to Batches"
         />
         <Card className="max-w-3xl">
-          <BatchForm mode="create" options={getBatchFormOptions()} presetCourse={presetCourse} />
+          <BatchForm mode="create" options={await getBatchFormOptions()} presetCourse={presetCourse} />
         </Card>
       </div>
     </AdminShell>

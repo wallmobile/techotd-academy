@@ -1,6 +1,8 @@
 "use server";
 
+import { isUniqueViolation } from "@/lib/db/client";
 import { redirect } from "next/navigation";
+import { after } from "next/server";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { getClientIp, hitLimit } from "@/lib/rateLimit";
 import { canDeliverResetEmail, deliverPasswordResetEmail } from "@/lib/auth/resetEmail";
@@ -27,6 +29,14 @@ import {
 const DUMMY_PASSWORD_HASH =
   "$2b$12$aA5p1XCC17ynTOtsOoDiTuYeylmcoq0J9ODfq53CYFOwVzwXkcI/i";
 
+function runAfterResponse(task) {
+  try {
+    after(task);
+  } catch {
+    void task().catch(() => {});
+  }
+}
+
 function fieldValues(formData, fields) {
   return Object.fromEntries(fields.map((field) => [field, formData.get(field) ?? ""]));
 }
@@ -45,7 +55,7 @@ export async function registerAction(_prevState, formData) {
     return { status: "error", errors, values: { ...values, password: "", confirmPassword: "" } };
   }
 
-  const existing = findUserByEmailInternal(values.email);
+  const existing = await findUserByEmailInternal(values.email);
   if (existing) {
     return {
       status: "error",
@@ -56,13 +66,25 @@ export async function registerAction(_prevState, formData) {
   }
 
   const passwordHash = await hashPassword(values.password);
-  const user = createUser({
-    name: values.name,
-    email: values.email,
-    phone: values.phone || null,
-    passwordHash,
-    role: "STUDENT",
-  });
+  let user;
+  try {
+    user = await createUser({
+      name: values.name,
+      email: values.email,
+      phone: values.phone || null,
+      passwordHash,
+      role: "STUDENT",
+    });
+  } catch (error) {
+    // Two registrations for one email at once: the UNIQUE constraint decides.
+    if (!isUniqueViolation(error)) throw error;
+    return {
+      status: "error",
+      errors: {},
+      formError: "An account with this email already exists. Try signing in instead.",
+      values: { ...values, password: "", confirmPassword: "" },
+    };
+  }
 
   await startSession(user.id);
   redirect(roleHomeRoute(user.role));
@@ -81,8 +103,8 @@ export async function loginAction(_prevState, formData) {
   // the message is generic so it doesn't reveal whether the email exists.
   const ip = await getClientIp();
   const email = values.email.trim().toLowerCase();
-  const perAccount = hitLimit("login", ip, email);
-  const perIp = hitLimit("loginIp", ip);
+  const perAccount = await hitLimit("login", ip, email);
+  const perIp = await hitLimit("loginIp", ip);
   if (!perAccount.allowed || !perIp.allowed) {
     return {
       status: "error",
@@ -92,7 +114,7 @@ export async function loginAction(_prevState, formData) {
     };
   }
 
-  const user = findUserByEmailInternal(values.email);
+  const user = await findUserByEmailInternal(values.email);
   const passwordToCompare = user ? user.passwordHash : DUMMY_PASSWORD_HASH;
   const passwordMatches = await verifyPassword(values.password, passwordToCompare);
 
@@ -155,15 +177,20 @@ export async function forgotPasswordAction(_prevState, formData) {
   // the same public response (no token is created), so this reveals nothing.
   const ip = await getClientIp();
   const email = values.email.trim();
-  const allowed = hitLimit("forgotPassword", ip, email.toLowerCase()).allowed;
-  const result = allowed ? createPasswordResetTokenForEmail(values.email) : null;
+  const allowed = (await hitLimit("forgotPassword", ip, email.toLowerCase())).allowed;
+  const result = allowed ? await createPasswordResetTokenForEmail(values.email) : null;
 
   // Production: email the link. Not awaited, so response time doesn't reveal
   // whether the account exists; a failure is only a short code in the log.
   // Outside production the link is surfaced in the response instead so the
   // flow works without a mail provider. That never happens in production.
   if (result && production) {
-    void deliverPasswordResetEmail({ to: email, token: result.token }).then((r) => {
+    // Deliberately NOT awaited before responding: the response time must not reveal
+    // whether the account exists. after() keeps the work alive after the response on
+    // serverless hosts (a plain floating promise can be frozen when the function
+    // returns); outside a request scope (tests, scripts) it falls back to a floating promise.
+    runAfterResponse(async () => {
+      const r = await deliverPasswordResetEmail({ to: email, token: result.token });
       if (!r.ok) console.warn(`[auth] password reset email not sent: ${r.code}`);
     });
   }
@@ -195,7 +222,7 @@ export async function resetPasswordAction(_prevState, formData) {
     return { status: "error", errors, values: {} };
   }
 
-  const resetToken = getValidPasswordResetToken(token);
+  const resetToken = await getValidPasswordResetToken(token);
   if (!resetToken) {
     return {
       status: "error",
@@ -210,7 +237,7 @@ export async function resetPasswordAction(_prevState, formData) {
   // existing session for the account (Phase 9.4) — whoever held an old
   // session (including an attacker the reset was meant to lock out) must
   // sign in again with the new password.
-  const completed = completePasswordReset({
+  const completed = await completePasswordReset({
     tokenId: resetToken.id,
     userId: resetToken.userId,
     passwordHash,

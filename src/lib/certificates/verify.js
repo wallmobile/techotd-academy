@@ -12,15 +12,15 @@ import { getCourse } from "@/lib/catalog";
 
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{16,64}$/;
 
-export function getPublicVerification(token) {
+export async function getPublicVerification(token) {
   if (typeof token !== "string" || !TOKEN_PATTERN.test(token)) return null;
-  const cert = getCertificateByToken(token);
+  const cert = await getCertificateByToken(token);
   if (!cert) return null;
   return {
     valid: cert.status === "ACTIVE",
     status: cert.status === "ACTIVE" ? "VALID" : "REVOKED",
     certificateNumber: cert.certificateNumber,
-    courseTitle: getCourse(cert.courseSlug)?.title ?? cert.courseSlug,
+    courseTitle: (await getCourse(cert.courseSlug))?.title ?? cert.courseSlug,
     issuedAt: cert.issuedAt,
     holderName: cert.studentName,
     issuer: "TechOTD Academy",

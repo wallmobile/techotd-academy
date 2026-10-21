@@ -4,11 +4,14 @@ import { db } from "@/lib/db/client";
 // Fee plan / payment persistence (Phase 10.4). All SQL is parameterized (the
 // only interpolation is a fixed whitelist sort / constant SQL fragments).
 // Every financial write that touches more than one row runs in a single
-// IMMEDIATE transaction so balances are checked and written atomically, and
-// each writes an audit_log row in the same transaction. Authorization and
-// input validation happen one layer up in src/lib/fees/service.js; the
-// invariants that must never be violated (no overpayment, receipt
-// uniqueness, plan active) are re-checked here inside the transaction.
+// transaction so balances are checked and written atomically, and each
+// writes an audit_log row in the same transaction. Concurrent payments
+// against one plan are serialized by locking the plan row (SELECT ... FOR
+// UPDATE), so two requests can never both pass the "no overpayment" check.
+// Authorization and input validation happen one layer up in
+// src/lib/fees/service.js; the invariants that must never be violated (no
+// overpayment, receipt uniqueness, plan active) are re-checked here inside
+// the transaction.
 
 export const COUNTED_PAYMENT_STATUSES = ["RECORDED", "VERIFIED"];
 
@@ -84,36 +87,42 @@ function rowToPayment(r) {
 const PAYMENT_SELECT = `SELECT p.*, u.name AS recorded_by_name FROM payments p
   LEFT JOIN users u ON u.id = p.recorded_by`;
 
-export function writeAudit({ actorUserId, action, entityType, entityId, detail }) {
-  db.prepare(
-    "INSERT INTO audit_log (id, actor_user_id, action, entity_type, entity_id, detail) VALUES (?, ?, ?, ?, ?, ?)"
-  ).run(crypto.randomUUID(), actorUserId ?? null, action, entityType, entityId, detail ? JSON.stringify(detail) : null);
+// `x` is the pool by default, or a transaction handle from db.tx so the audit
+// row commits (or rolls back) together with the change it describes.
+export async function writeAudit({ actorUserId, action, entityType, entityId, detail }, x = db) {
+  await x.run("INSERT INTO audit_log (id, actor_user_id, action, entity_type, entity_id, detail) VALUES (?, ?, ?, ?, ?, ?)", [
+    crypto.randomUUID(),
+    actorUserId ?? null,
+    action,
+    entityType,
+    entityId,
+    detail ? JSON.stringify(detail) : null,
+  ]);
 }
 
 // The change history of one fee plan: the plan's own audit rows plus those
 // of every payment recorded against it.
-export function listAuditForFeePlan(feePlanId) {
-  return db
-    .prepare(
-      `SELECT a.action, a.detail, a.created_at, u.name AS actor_name FROM audit_log a
-       LEFT JOIN users u ON u.id = a.actor_user_id
-       WHERE (a.entity_type = 'fee_plan' AND a.entity_id = @id)
-          OR (a.entity_type = 'payment' AND a.entity_id IN (SELECT id FROM payments WHERE fee_plan_id = @id))
-       ORDER BY a.created_at DESC, a.rowid DESC`
-    )
-    .all({ id: feePlanId })
-    .map((r) => ({ action: r.action, detail: r.detail ? JSON.parse(r.detail) : null, at: r.created_at, actorName: r.actor_name }));
+export async function listAuditForFeePlan(feePlanId) {
+  const rows = await db.all(
+    `SELECT a.action, a.detail, a.created_at, u.name AS actor_name FROM audit_log a
+     LEFT JOIN users u ON u.id = a.actor_user_id
+     WHERE (a.entity_type = 'fee_plan' AND a.entity_id = @id)
+        OR (a.entity_type = 'payment' AND a.entity_id IN (SELECT id FROM payments WHERE fee_plan_id = @id))
+     ORDER BY a.created_at DESC, a.seq DESC`,
+    { id: feePlanId }
+  );
+  return rows.map((r) => ({ action: r.action, detail: r.detail ? JSON.parse(r.detail) : null, at: r.created_at, actorName: r.actor_name }));
 }
 
 // --- reads -----------------------------------------------------------------
-export function getFeePlanById(id) {
+export async function getFeePlanById(id) {
   if (!id || typeof id !== "string") return null;
-  return rowToPlan(db.prepare(`${PLAN_SELECT} WHERE f.id = @id`).get({ id, today: todayIso() }));
+  return rowToPlan(await db.get(`${PLAN_SELECT} WHERE f.id = @id`, { id, today: todayIso() }));
 }
 
-export function getFeePlanByEnrollmentId(enrollmentId) {
+export async function getFeePlanByEnrollmentId(enrollmentId) {
   if (!enrollmentId || typeof enrollmentId !== "string") return null;
-  return rowToPlan(db.prepare(`${PLAN_SELECT} WHERE f.enrollment_id = @id`).get({ id: enrollmentId, today: todayIso() }));
+  return rowToPlan(await db.get(`${PLAN_SELECT} WHERE f.enrollment_id = @id`, { id: enrollmentId, today: todayIso() }));
 }
 
 function likePattern(q) {
@@ -123,12 +132,12 @@ function likePattern(q) {
 const SORTS = {
   newest: "created_at DESC, id ASC",
   oldest: "created_at ASC, id ASC",
-  name: "student_name COLLATE NOCASE ASC, id ASC",
+  name: "lower(student_name) ASC, id ASC",
   outstanding: "(net_minor - paid_minor) DESC, id ASC",
 };
 export const FEE_SORT_KEYS = Object.keys(SORTS);
 
-export function listFeePlans({ q = "", status = "", course = "", sort = "newest", limit = 20, offset = 0 }) {
+export async function listFeePlans({ q = "", status = "", course = "", sort = "newest", limit = 20, offset = 0 }) {
   const clauses = [];
   const params = { today: todayIso() };
   if (status) {
@@ -140,80 +149,74 @@ export function listFeePlans({ q = "", status = "", course = "", sort = "newest"
     params.course = course;
   }
   if (q) {
-    clauses.push("(student_name LIKE @q ESCAPE '\\' OR student_email LIKE @q ESCAPE '\\')");
+    clauses.push("(student_name ILIKE @q ESCAPE '\\' OR student_email ILIKE @q ESCAPE '\\')");
     params.q = likePattern(q);
   }
   const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
-  const base = `SELECT * FROM (${PLAN_SELECT})`;
+  const base = `SELECT * FROM (${PLAN_SELECT}) AS plans`;
   const order = SORTS[sort] || SORTS.newest;
-  const rows = db.prepare(`${base} ${where} ORDER BY ${order} LIMIT @limit OFFSET @offset`).all({ ...params, limit, offset });
-  const total = db.prepare(`SELECT COUNT(*) AS c FROM (${PLAN_SELECT}) ${where}`).get(params).c;
+  const rows = await db.all(`${base} ${where} ORDER BY ${order} LIMIT @limit OFFSET @offset`, { ...params, limit, offset });
+  const total = (await db.get(`SELECT COUNT(*) AS c FROM (${PLAN_SELECT}) AS plans ${where}`, params)).c;
   return { rows: rows.map(rowToPlan), total };
 }
 
-export function listFeePlansForStudent(userId) {
-  return db
-    .prepare(`${PLAN_SELECT} WHERE f.student_user_id = @userId ORDER BY f.created_at DESC, f.id ASC`)
-    .all({ userId, today: todayIso() })
-    .map(rowToPlan);
+export async function listFeePlansForStudent(userId) {
+  const rows = await db.all(`${PLAN_SELECT} WHERE f.student_user_id = @userId ORDER BY f.created_at DESC, f.id ASC`, { userId, today: todayIso() });
+  return rows.map(rowToPlan);
 }
 
-export function listPaymentsForPlan(feePlanId) {
-  return db
-    .prepare(`${PAYMENT_SELECT} WHERE p.fee_plan_id = ? ORDER BY p.created_at DESC, p.rowid DESC`)
-    .all(feePlanId)
-    .map(rowToPayment);
+export async function listPaymentsForPlan(feePlanId) {
+  const rows = await db.all(`${PAYMENT_SELECT} WHERE p.fee_plan_id = ? ORDER BY p.created_at DESC, p.seq DESC`, [feePlanId]);
+  return rows.map(rowToPayment);
 }
 
-export function getPaymentById(id) {
+export async function getPaymentById(id) {
   if (!id || typeof id !== "string") return null;
-  return rowToPayment(db.prepare(`${PAYMENT_SELECT} WHERE p.id = ?`).get(id));
+  return rowToPayment(await db.get(`${PAYMENT_SELECT} WHERE p.id = ?`, [id]));
 }
 
-export function getPaymentByReceiptToken(token) {
+export async function getPaymentByReceiptToken(token) {
   if (!token || typeof token !== "string") return null;
-  return rowToPayment(db.prepare(`${PAYMENT_SELECT} WHERE p.receipt_token = ?`).get(token));
+  return rowToPayment(await db.get(`${PAYMENT_SELECT} WHERE p.receipt_token = ?`, [token]));
 }
 
-export function getPaymentByProviderReference(provider, reference) {
-  return rowToPayment(db.prepare(`${PAYMENT_SELECT} WHERE p.provider = ? AND p.provider_reference = ?`).get(provider, reference));
+export async function getPaymentByProviderReference(provider, reference, x = db) {
+  return rowToPayment(await x.get(`${PAYMENT_SELECT} WHERE p.provider = ? AND p.provider_reference = ?`, [provider, reference]));
 }
 
-export function getPaymentByIdempotencyKey(key) {
-  return rowToPayment(db.prepare(`${PAYMENT_SELECT} WHERE p.idempotency_key = ?`).get(key));
+export async function getPaymentByIdempotencyKey(key, x = db) {
+  return rowToPayment(await x.get(`${PAYMENT_SELECT} WHERE p.idempotency_key = ?`, [key]));
 }
 
 // Enrollments (any status except CANCELLED) with no fee plan yet — the
 // picker for /admin/fees/new. Search only, capped.
-export function searchEnrollmentsWithoutFee(q, limit = 20) {
-  const where = q ? "AND (u.name LIKE @q ESCAPE '\\' OR u.email LIKE @q ESCAPE '\\')" : "";
+export async function searchEnrollmentsWithoutFee(q, limit = 20) {
+  const where = q ? "AND (u.name ILIKE @q ESCAPE '\\' OR u.email ILIKE @q ESCAPE '\\')" : "";
   const params = q ? { q: likePattern(q), limit } : { limit };
-  return db
-    .prepare(
-      `SELECT be.id, be.batch_id, be.status, u.name AS student_name, u.email AS student_email
-       FROM batch_enrollments be
-       JOIN student_profiles sp ON sp.id = be.student_id
-       JOIN users u ON u.id = sp.user_id
-       WHERE be.status != 'CANCELLED'
-         AND NOT EXISTS (SELECT 1 FROM fee_plans f WHERE f.enrollment_id = be.id)
-         ${where}
-       ORDER BY u.name COLLATE NOCASE ASC LIMIT @limit`
-    )
-    .all(params)
-    .map((r) => ({ id: r.id, batchId: r.batch_id, status: r.status, studentName: r.student_name, studentEmail: r.student_email }));
+  const rows = await db.all(
+    `SELECT be.id, be.batch_id, be.status, u.name AS student_name, u.email AS student_email
+     FROM batch_enrollments be
+     JOIN student_profiles sp ON sp.id = be.student_id
+     JOIN users u ON u.id = sp.user_id
+     WHERE be.status != 'CANCELLED'
+       AND NOT EXISTS (SELECT 1 FROM fee_plans f WHERE f.enrollment_id = be.id)
+       ${where}
+     ORDER BY lower(u.name) ASC, be.id ASC LIMIT @limit`,
+    params
+  );
+  return rows.map((r) => ({ id: r.id, batchId: r.batch_id, status: r.status, studentName: r.student_name, studentEmail: r.student_email }));
 }
 
-export function getEnrollmentForFee(enrollmentId) {
+export async function getEnrollmentForFee(enrollmentId) {
   if (!enrollmentId || typeof enrollmentId !== "string") return null;
-  const r = db
-    .prepare(
-      `SELECT be.id, be.batch_id, be.status, u.id AS user_id, u.name AS student_name, u.email AS student_email, u.status AS user_status
-       FROM batch_enrollments be
-       JOIN student_profiles sp ON sp.id = be.student_id
-       JOIN users u ON u.id = sp.user_id
-       WHERE be.id = ?`
-    )
-    .get(enrollmentId);
+  const r = await db.get(
+    `SELECT be.id, be.batch_id, be.status, u.id AS user_id, u.name AS student_name, u.email AS student_email, u.status AS user_status
+     FROM batch_enrollments be
+     JOIN student_profiles sp ON sp.id = be.student_id
+     JOIN users u ON u.id = sp.user_id
+     WHERE be.id = ?`,
+    [enrollmentId]
+  );
   if (!r) return null;
   return {
     id: r.id,
@@ -226,182 +229,196 @@ export function getEnrollmentForFee(enrollmentId) {
   };
 }
 
-export function feeTotals() {
-  const r = db
-    .prepare(
-      `SELECT
-         COUNT(*) AS plans,
-         COALESCE(SUM(CASE WHEN status != 'CANCELLED' THEN total_minor - discount_minor END), 0) AS net
-       FROM fee_plans`
-    )
-    .get();
-  const paid = db
-    .prepare(
+export async function feeTotals() {
+  const r = await db.get(
+    `SELECT
+       COUNT(*) AS plans,
+       COALESCE(SUM(CASE WHEN status != 'CANCELLED' THEN total_minor - discount_minor END), 0) AS net
+     FROM fee_plans`
+  );
+  const paid = (
+    await db.get(
       `SELECT COALESCE(SUM(p.amount_minor), 0) AS paid FROM payments p JOIN fee_plans f ON f.id = p.fee_plan_id
        WHERE p.status IN ('RECORDED','VERIFIED') AND f.status != 'CANCELLED'`
     )
-    .get().paid;
+  ).paid;
   return { plans: r.plans, netMinor: r.net, paidMinor: paid, outstandingMinor: Math.max(0, r.net - paid) };
 }
 
 // --- writes ------------------------------------------------------------------
-export function createFeePlanTx({ enrollmentId, studentUserId, courseSlug, batchId, currency, totalMinor, discountMinor, dueDate, note, actorUserId }) {
-  const run = db.transaction(() => {
-    const existing = db.prepare("SELECT id FROM fee_plans WHERE enrollment_id = ?").get(enrollmentId);
+export async function createFeePlanTx({ enrollmentId, studentUserId, courseSlug, batchId, currency, totalMinor, discountMinor, dueDate, note, actorUserId }) {
+  return await db.tx(async (t) => {
+    // Serialize concurrent creates for one enrollment (the UNIQUE constraint is the backstop).
+    await t.lock(`fee-plan:${enrollmentId}`);
+    const existing = await t.get("SELECT id FROM fee_plans WHERE enrollment_id = ?", [enrollmentId]);
     if (existing) return { ok: false, reason: "duplicate", feePlanId: existing.id };
     const id = crypto.randomUUID();
-    db.prepare(
+    await t.run(
       `INSERT INTO fee_plans (id, enrollment_id, student_user_id, course_slug, batch_id, currency, total_minor, discount_minor, due_date, note, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run(id, enrollmentId, studentUserId, courseSlug, batchId, currency, totalMinor, discountMinor, dueDate || null, note || null, actorUserId);
-    writeAudit({
-      actorUserId,
-      action: "FEE_PLAN_CREATED",
-      entityType: "fee_plan",
-      entityId: id,
-      detail: { enrollmentId, currency, totalMinor, discountMinor, dueDate: dueDate || null },
-    });
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, enrollmentId, studentUserId, courseSlug, batchId, currency, totalMinor, discountMinor, dueDate || null, note || null, actorUserId]
+    );
+    await writeAudit(
+      {
+        actorUserId,
+        action: "FEE_PLAN_CREATED",
+        entityType: "fee_plan",
+        entityId: id,
+        detail: { enrollmentId, currency, totalMinor, discountMinor, dueDate: dueDate || null },
+      },
+      t
+    );
     return { ok: true, feePlanId: id };
   });
-  return run.immediate();
 }
 
-export function updateFeePlanTx({ feePlanId, totalMinor, discountMinor, dueDate, note, actorUserId }) {
-  const run = db.transaction(() => {
-    const plan = db.prepare("SELECT * FROM fee_plans WHERE id = ?").get(feePlanId);
+export async function updateFeePlanTx({ feePlanId, totalMinor, discountMinor, dueDate, note, actorUserId }) {
+  return await db.tx(async (t) => {
+    // Row lock: a payment being recorded right now must finish before the "below paid" check.
+    const plan = await t.get("SELECT * FROM fee_plans WHERE id = ? FOR UPDATE", [feePlanId]);
     if (!plan) return { ok: false, reason: "not_found" };
     if (plan.status === "CANCELLED") return { ok: false, reason: "cancelled" };
-    const paid = db
-      .prepare("SELECT COALESCE(SUM(amount_minor), 0) AS s FROM payments WHERE fee_plan_id = ? AND status IN ('RECORDED','VERIFIED')")
-      .get(feePlanId).s;
+    const paid = (
+      await t.get("SELECT COALESCE(SUM(amount_minor), 0) AS s FROM payments WHERE fee_plan_id = ? AND status IN ('RECORDED','VERIFIED')", [feePlanId])
+    ).s;
     // A plan can't be edited below what has already been paid.
     if (totalMinor - discountMinor < paid) return { ok: false, reason: "below_paid" };
-    db.prepare(
-      "UPDATE fee_plans SET total_minor = ?, discount_minor = ?, due_date = ?, note = ?, updated_at = datetime('now') WHERE id = ?"
-    ).run(totalMinor, discountMinor, dueDate || null, note || null, feePlanId);
-    writeAudit({
-      actorUserId,
-      action: "FEE_PLAN_UPDATED",
-      entityType: "fee_plan",
-      entityId: feePlanId,
-      detail: {
-        from: { totalMinor: plan.total_minor, discountMinor: plan.discount_minor, dueDate: plan.due_date },
-        to: { totalMinor, discountMinor, dueDate: dueDate || null },
+    await t.run("UPDATE fee_plans SET total_minor = ?, discount_minor = ?, due_date = ?, note = ?, updated_at = app_now() WHERE id = ?", [
+      totalMinor,
+      discountMinor,
+      dueDate || null,
+      note || null,
+      feePlanId,
+    ]);
+    await writeAudit(
+      {
+        actorUserId,
+        action: "FEE_PLAN_UPDATED",
+        entityType: "fee_plan",
+        entityId: feePlanId,
+        detail: {
+          from: { totalMinor: plan.total_minor, discountMinor: plan.discount_minor, dueDate: plan.due_date },
+          to: { totalMinor, discountMinor, dueDate: dueDate || null },
+        },
       },
-    });
+      t
+    );
     return { ok: true };
   });
-  return run.immediate();
 }
 
-export function cancelFeePlanTx({ feePlanId, reason, actorUserId }) {
-  const run = db.transaction(() => {
-    const plan = db.prepare("SELECT status FROM fee_plans WHERE id = ?").get(feePlanId);
+export async function cancelFeePlanTx({ feePlanId, reason, actorUserId }) {
+  return await db.tx(async (t) => {
+    const plan = await t.get("SELECT status FROM fee_plans WHERE id = ? FOR UPDATE", [feePlanId]);
     if (!plan) return { ok: false, reason: "not_found" };
     if (plan.status === "CANCELLED") return { ok: false, reason: "cancelled" };
-    const counted = db
-      .prepare("SELECT COUNT(*) AS c FROM payments WHERE fee_plan_id = ? AND status IN ('RECORDED','VERIFIED')")
-      .get(feePlanId).c;
+    const counted = (await t.get("SELECT COUNT(*) AS c FROM payments WHERE fee_plan_id = ? AND status IN ('RECORDED','VERIFIED')", [feePlanId])).c;
     if (counted > 0) return { ok: false, reason: "has_payments" };
-    db.prepare("UPDATE fee_plans SET status = 'CANCELLED', updated_at = datetime('now') WHERE id = ?").run(feePlanId);
-    writeAudit({ actorUserId, action: "FEE_PLAN_CANCELLED", entityType: "fee_plan", entityId: feePlanId, detail: { reason } });
+    await t.run("UPDATE fee_plans SET status = 'CANCELLED', updated_at = app_now() WHERE id = ?", [feePlanId]);
+    await writeAudit({ actorUserId, action: "FEE_PLAN_CANCELLED", entityType: "fee_plan", entityId: feePlanId, detail: { reason } }, t);
     return { ok: true };
   });
-  return run.immediate();
 }
 
-function nextReceiptNumber() {
-  const count = db.prepare("SELECT COUNT(*) AS c FROM payments").get().c + 1;
+// Receipt numbers are sequential; the caller holds the "receipt-number"
+// advisory lock so two concurrent payments cannot read the same count.
+async function nextReceiptNumber(t) {
+  const count = (await t.get("SELECT COUNT(*) AS c FROM payments")).c + 1;
   return `RCPT-${new Date().getUTCFullYear()}-${String(count).padStart(6, "0")}`;
 }
 
 // Inserts a counted payment after re-checking, inside the transaction, that
 // the plan is active, the currency matches and the amount does not exceed
-// the outstanding balance.
-function insertPayment({ feePlanId, amountMinor, currency, source, method, provider, providerReference, idempotencyKey, status, paidOn, note, actorUserId, verifiedAt }) {
-  const plan = db.prepare("SELECT * FROM fee_plans WHERE id = ?").get(feePlanId);
+// the outstanding balance. The plan row is locked (FOR UPDATE) first, so
+// concurrent payments for the same plan are checked one at a time.
+async function insertPayment(t, { feePlanId, amountMinor, currency, source, method, provider, providerReference, idempotencyKey, status, paidOn, note, actorUserId, verifiedAt }) {
+  const plan = await t.get("SELECT * FROM fee_plans WHERE id = ? FOR UPDATE", [feePlanId]);
   if (!plan) return { ok: false, reason: "not_found" };
   if (plan.status === "CANCELLED") return { ok: false, reason: "cancelled" };
   if (plan.currency !== currency) return { ok: false, reason: "currency_mismatch" };
-  const paid = db
-    .prepare("SELECT COALESCE(SUM(amount_minor), 0) AS s FROM payments WHERE fee_plan_id = ? AND status IN ('RECORDED','VERIFIED')")
-    .get(feePlanId).s;
+  const paid = (
+    await t.get("SELECT COALESCE(SUM(amount_minor), 0) AS s FROM payments WHERE fee_plan_id = ? AND status IN ('RECORDED','VERIFIED')", [feePlanId])
+  ).s;
   const outstanding = plan.total_minor - plan.discount_minor - paid;
   if (outstanding <= 0) return { ok: false, reason: "already_paid" };
   if (amountMinor > outstanding) return { ok: false, reason: "exceeds_outstanding", outstandingMinor: outstanding };
 
   const id = crypto.randomUUID();
   const receiptToken = crypto.randomBytes(24).toString("base64url");
-  const receiptNumber = nextReceiptNumber();
-  db.prepare(
+  await t.lock("receipt-number");
+  const receiptNumber = await nextReceiptNumber(t);
+  await t.run(
     `INSERT INTO payments (id, fee_plan_id, amount_minor, currency, source, method, provider, provider_reference,
        idempotency_key, status, paid_on, note, recorded_by, verified_at, receipt_number, receipt_token)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(
-    id, feePlanId, amountMinor, currency, source, method, provider ?? null, providerReference ?? null,
-    idempotencyKey ?? null, status, paidOn, note ?? null, actorUserId ?? null, verifiedAt ?? null, receiptNumber, receiptToken
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      id, feePlanId, amountMinor, currency, source, method, provider ?? null, providerReference ?? null,
+      idempotencyKey ?? null, status, paidOn, note ?? null, actorUserId ?? null, verifiedAt ?? null, receiptNumber, receiptToken,
+    ]
   );
-  writeAudit({
-    actorUserId,
-    action: source === "GATEWAY" ? "PAYMENT_VERIFIED" : "PAYMENT_RECORDED",
-    entityType: "payment",
-    entityId: id,
-    detail: { feePlanId, amountMinor, currency, method, source, receiptNumber, providerReference: providerReference ?? null },
-  });
+  await writeAudit(
+    {
+      actorUserId,
+      action: source === "GATEWAY" ? "PAYMENT_VERIFIED" : "PAYMENT_RECORDED",
+      entityType: "payment",
+      entityId: id,
+      detail: { feePlanId, amountMinor, currency, method, source, receiptNumber, providerReference: providerReference ?? null },
+    },
+    t
+  );
   return { ok: true, paymentId: id, receiptNumber, receiptToken };
 }
 
-export function recordManualPaymentTx({ feePlanId, amountMinor, currency, method, paidOn, note, idempotencyKey, actorUserId }) {
-  const run = db.transaction(() => {
+export async function recordManualPaymentTx({ feePlanId, amountMinor, currency, method, paidOn, note, idempotencyKey, actorUserId }) {
+  return await db.tx(async (t) => {
     if (idempotencyKey) {
-      const dup = getPaymentByIdempotencyKey(idempotencyKey);
+      // Same key submitted twice at once: the second waits here, then sees the first's row.
+      await t.lock(`payment-idem:${idempotencyKey}`);
+      const dup = await getPaymentByIdempotencyKey(idempotencyKey, t);
       if (dup) return { ok: false, reason: "duplicate", paymentId: dup.id };
     }
-    return insertPayment({
+    return await insertPayment(t, {
       feePlanId, amountMinor, currency, source: "MANUAL", method, status: "RECORDED", paidOn, note, idempotencyKey, actorUserId,
     });
   });
-  return run.immediate();
 }
 
 // A payment confirmed by a payment provider (called only from code that has
 // already verified the provider's signature). Idempotent per
 // (provider, eventId) and per (provider, providerReference).
-export function recordGatewayPaymentTx({ provider, eventId, providerReference, feePlanId, amountMinor, currency, paidOn }) {
-  const run = db.transaction(() => {
-    const seen = db.prepare("SELECT 1 FROM payment_provider_events WHERE provider = ? AND event_id = ?").get(provider, eventId);
+export async function recordGatewayPaymentTx({ provider, eventId, providerReference, feePlanId, amountMinor, currency, paidOn }) {
+  return await db.tx(async (t) => {
+    // A provider retrying the same event concurrently is serialized here.
+    await t.lock(`gateway-event:${provider}:${eventId}`);
+    const seen = await t.get("SELECT 1 AS one FROM payment_provider_events WHERE provider = ? AND event_id = ?", [provider, eventId]);
     if (seen) return { ok: true, duplicate: true };
-    const existing = getPaymentByProviderReference(provider, providerReference);
+    const existing = await getPaymentByProviderReference(provider, providerReference, t);
     let outcome;
     let result;
     if (existing) {
       outcome = "duplicate_reference";
       result = { ok: true, duplicate: true, paymentId: existing.id };
     } else {
-      result = insertPayment({
+      result = await insertPayment(t, {
         feePlanId, amountMinor, currency, source: "GATEWAY", method: "GATEWAY", provider, providerReference,
         status: "VERIFIED", paidOn, actorUserId: null, verifiedAt: new Date().toISOString(),
       });
       outcome = result.ok ? "recorded" : `rejected:${result.reason}`;
     }
-    db.prepare("INSERT INTO payment_provider_events (id, provider, event_id, outcome) VALUES (?, ?, ?, ?)").run(
-      crypto.randomUUID(), provider, eventId, outcome
-    );
+    await t.run("INSERT INTO payment_provider_events (id, provider, event_id, outcome) VALUES (?, ?, ?, ?)", [
+      crypto.randomUUID(), provider, eventId, outcome,
+    ]);
     return result;
   });
-  return run.immediate();
 }
 
-export function voidPaymentTx({ paymentId, reason, actorUserId }) {
-  const run = db.transaction(() => {
-    const p = db.prepare("SELECT status, fee_plan_id FROM payments WHERE id = ?").get(paymentId);
+export async function voidPaymentTx({ paymentId, reason, actorUserId }) {
+  return await db.tx(async (t) => {
+    const p = await t.get("SELECT status, fee_plan_id FROM payments WHERE id = ? FOR UPDATE", [paymentId]);
     if (!p) return { ok: false, reason: "not_found" };
     if (p.status === "VOIDED") return { ok: false, reason: "already_voided" };
-    db.prepare(
-      "UPDATE payments SET status = 'VOIDED', voided_at = datetime('now'), void_reason = ?, voided_by = ? WHERE id = ?"
-    ).run(reason, actorUserId, paymentId);
-    writeAudit({ actorUserId, action: "PAYMENT_VOIDED", entityType: "payment", entityId: paymentId, detail: { reason, feePlanId: p.fee_plan_id } });
+    await t.run("UPDATE payments SET status = 'VOIDED', voided_at = app_now(), void_reason = ?, voided_by = ? WHERE id = ?", [reason, actorUserId, paymentId]);
+    await writeAudit({ actorUserId, action: "PAYMENT_VOIDED", entityType: "payment", entityId: paymentId, detail: { reason, feePlanId: p.fee_plan_id } }, t);
     return { ok: true, feePlanId: p.fee_plan_id };
   });
-  return run.immediate();
 }

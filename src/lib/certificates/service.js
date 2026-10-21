@@ -60,22 +60,22 @@ export function verificationUrl(token) {
   return `${base}/verify-certificate/${token}`;
 }
 
-function courseOf(enrollment) {
-  const batch = getBatch(enrollment.batchId);
-  const course = batch ? getCourse(batch.courseSlug) : null;
+async function courseOf(enrollment) {
+  const batch = await getBatch(enrollment.batchId);
+  const course = batch ? await getCourse(batch.courseSlug) : null;
   return { batch, course };
 }
 
 // Pure read of the eligibility facts for one enrollment. Does not require
 // the caller to be staff (the student view never calls this); the admin
 // functions below guard it.
-function evaluate(enrollmentId) {
-  const enrollment = getEnrollmentForCertificate(enrollmentId);
+async function evaluate(enrollmentId) {
+  const enrollment = await getEnrollmentForCertificate(enrollmentId);
   if (!enrollment) return null;
-  const { batch, course } = courseOf(enrollment);
+  const { batch, course } = await courseOf(enrollment);
   if (!batch || !course) return null;
 
-  const progress = computeCourseProgress(enrollment.profileId, course);
+  const progress = await computeCourseProgress(enrollment.profileId, course);
   const checks = [
     {
       key: "enrollment_active",
@@ -96,7 +96,7 @@ function evaluate(enrollmentId) {
       detail: `${progress.completedCount} of ${progress.totalCount} lessons`,
     },
   ];
-  const existing = getActiveCertificateFor(enrollment.profileId, course.slug);
+  const existing = await getActiveCertificateFor(enrollment.profileId, course.slug);
   return {
     enrollment,
     course,
@@ -104,13 +104,13 @@ function evaluate(enrollmentId) {
     checks,
     autoEligible: checks.every((c) => c.passed),
     existingCertificateId: existing?.id ?? null,
-    evidence: getLearningEvidence(enrollment.profileId, batch.id),
+    evidence: await getLearningEvidence(enrollment.profileId, batch.id),
   };
 }
 
 export async function getEligibility(enrollmentId) {
   if (!(await getAdminContext())) return null;
-  const e = evaluate(enrollmentId);
+  const e = await evaluate(enrollmentId);
   if (!e) return null;
   return {
     studentName: e.enrollment.studentName,
@@ -135,10 +135,10 @@ export async function getCertificateFormData({ enrollmentId, query }) {
     eligibility: usable,
     candidates: usable
       ? []
-      : searchEnrollmentsForCertificate(query || "", (batchId) => getBatch(batchId)?.courseSlug ?? null).map((c) => {
-          const batch = getBatch(c.batchId);
-          return { ...c, courseTitle: batch ? getCourse(batch.courseSlug)?.title ?? batch.courseSlug : c.batchId };
-        }),
+      : await Promise.all((await searchEnrollmentsForCertificate(query || "", async (batchId) => (await getBatch(batchId))?.courseSlug ?? null)).map(async (c) => {
+          const batch = await getBatch(c.batchId);
+          return { ...c, courseTitle: batch ? (await getCourse(batch.courseSlug))?.title ?? batch.courseSlug : c.batchId };
+        })),
   };
 }
 
@@ -147,7 +147,7 @@ export async function issueCertificate({ enrollmentId, mode, approvalNote }) {
   const ctx = await getAdminContext();
   if (!ctx) return fail("forbidden");
 
-  const e = typeof enrollmentId === "string" ? evaluate(enrollmentId) : null;
+  const e = typeof enrollmentId === "string" ? await evaluate(enrollmentId) : null;
   if (!e) return fail("enrollment_invalid");
   if (e.enrollment.status === "CANCELLED") return fail("enrollment_cancelled");
 
@@ -165,7 +165,7 @@ export async function issueCertificate({ enrollmentId, mode, approvalNote }) {
     return fail("not_eligible");
   }
 
-  const result = issueCertificateTx({
+  const result = await issueCertificateTx({
     profileId: e.enrollment.profileId,
     courseSlug: e.course.slug,
     enrollmentId: e.enrollment.id,
@@ -184,53 +184,53 @@ export async function revokeCertificate({ certificateId, reason }) {
   const text = typeof reason === "string" ? reason.trim() : "";
   if (!text) return fail("reason_required");
   if (text.length > NOTE_MAX_LENGTH) return fail("note_long");
-  const before = getCertificateById(certificateId);
-  const result = revokeCertificateTx({ certificateId, reason: text, actorUserId: ctx.user.id });
+  const before = await getCertificateById(certificateId);
+  const result = await revokeCertificateTx({ certificateId, reason: text, actorUserId: ctx.user.id });
   if (!result.ok) return fail(result.reason);
   if (before?.studentUserId) {
     await notifyCertificateRevoked({
       userId: before.studentUserId,
       certificateId,
-      courseTitle: getCourse(before.courseSlug)?.title ?? before.courseSlug,
+      courseTitle: (await getCourse(before.courseSlug))?.title ?? before.courseSlug,
     });
   }
   return { ok: true, certificateId };
 }
 
-function describe(cert) {
-  return { ...cert, courseTitle: getCourse(cert.courseSlug)?.title ?? cert.courseSlug };
+async function describe(cert) {
+  return { ...cert, courseTitle: (await getCourse(cert.courseSlug))?.title ?? cert.courseSlug };
 }
 
 export async function getCertificatesPage({ q, status, course, sort, page }) {
   if (!(await getAdminContext())) return { rows: [], page: 1, totalPages: 1, pageSize: CERTIFICATES_PAGE_SIZE, total: 0 };
-  const probe = listCertificates({ q, status, course, sort, limit: 1, offset: 0 });
+  const probe = await listCertificates({ q, status, course, sort, limit: 1, offset: 0 });
   const totalPages = Math.max(1, Math.ceil(probe.total / CERTIFICATES_PAGE_SIZE));
   const current = Math.min(Math.max(1, page || 1), totalPages);
-  const { rows, total } = listCertificates({ q, status, course, sort, limit: CERTIFICATES_PAGE_SIZE, offset: (current - 1) * CERTIFICATES_PAGE_SIZE });
-  return { rows: rows.map(describe), page: current, totalPages, pageSize: CERTIFICATES_PAGE_SIZE, total };
+  const { rows, total } = await listCertificates({ q, status, course, sort, limit: CERTIFICATES_PAGE_SIZE, offset: (current - 1) * CERTIFICATES_PAGE_SIZE });
+  return { rows: await Promise.all(rows.map(describe)), page: current, totalPages, pageSize: CERTIFICATES_PAGE_SIZE, total };
 }
 
 export async function getCertificateDetail(certificateId) {
   if (!(await getAdminContext())) return null;
-  const cert = getCertificateById(certificateId);
+  const cert = await getCertificateById(certificateId);
   if (!cert) return null;
   return {
-    certificate: describe(cert),
+    certificate: await describe(cert),
     verifyUrl: cert.verificationToken ? verificationUrl(cert.verificationToken) : null,
-    history: listCertificateAudit(cert.id),
+    history: await listCertificateAudit(cert.id),
   };
 }
 
 export async function getCertificateSummary() {
   if (!(await getAdminContext())) return null;
-  return countCertificatesByStatus();
+  return await countCertificatesByStatus();
 }
 
 // Builds the PDF for an ACTIVE certificate. Revoked / unknown -> reason.
-export function renderCertificatePdf(cert) {
+export async function renderCertificatePdf(cert) {
   if (!cert) return { ok: false, reason: "not_found" };
   if (cert.status !== "ACTIVE") return { ok: false, reason: "revoked" };
-  const course = getCourse(cert.courseSlug);
+  const course = await getCourse(cert.courseSlug);
   const pdf = buildCertificatePdf({
     studentName: cert.studentName,
     courseTitle: course?.title ?? cert.courseSlug,
@@ -243,5 +243,5 @@ export function renderCertificatePdf(cert) {
 
 export async function getCertificatePdfForAdmin(certificateId) {
   if (!(await getAdminContext())) return { ok: false, reason: "forbidden" };
-  return renderCertificatePdf(getCertificateById(certificateId));
+  return await renderCertificatePdf(await getCertificateById(certificateId));
 }

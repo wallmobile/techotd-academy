@@ -37,21 +37,21 @@ export async function getMyAttendance() {
   const user = await getCurrentUser();
   if (!user || user.role !== "STUDENT") return { records: [], stats: null };
 
-  const profile = getOrCreateStudentProfile(user.id);
-  const records = listAttendanceForStudent(profile.id);
+  const profile = await getOrCreateStudentProfile(user.id);
+  const records = await listAttendanceForStudent(profile.id);
 
   if (records.length === 0) return { records: [], stats: null };
 
-  const enriched = records.map((record) => {
-    const batch = getBatch(record.batchId);
-    const session = record.classSessionId ? getClassSessionById(record.classSessionId) : null;
+  const enriched = await Promise.all(records.map(async (record) => {
+    const batch = await getBatch(record.batchId);
+    const session = record.classSessionId ? await getClassSessionById(record.classSessionId) : null;
     return {
       ...record,
       batch,
-      course: batch ? getCourse(batch.courseSlug) : null,
+      course: batch ? await getCourse(batch.courseSlug) : null,
       session,
     };
-  });
+  }));
 
   return { records: enriched, stats: computeAttendanceStats(records) };
 }

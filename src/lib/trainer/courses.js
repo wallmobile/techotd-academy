@@ -11,8 +11,8 @@ export async function getMyCourses() {
   const ctx = await getTrainerContext();
   if (!ctx) return [];
 
-  const assignedBatches = enrichAssignedBatches(ctx.batchIds);
-  const studentCounts = countActiveBatchEnrollmentsForBatchIds(ctx.batchIds);
+  const assignedBatches = await enrichAssignedBatches(ctx.batchIds);
+  const studentCounts = await countActiveBatchEnrollmentsForBatchIds(ctx.batchIds);
 
   const byCourseSlug = new Map();
   for (const { batch, course } of assignedBatches) {

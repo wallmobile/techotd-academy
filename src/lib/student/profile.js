@@ -17,7 +17,7 @@ export async function getMyProfile() {
   const user = await getCurrentUser();
   if (!user || user.role !== "STUDENT") return null;
 
-  const profile = getOrCreateStudentProfile(user.id);
+  const profile = await getOrCreateStudentProfile(user.id);
 
   return { user, profile };
 }

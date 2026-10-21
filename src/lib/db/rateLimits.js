@@ -1,30 +1,33 @@
 import { db } from "@/lib/db/client";
 
-// Fixed-window counter shared by every process using this database file.
-// Consumes one unit for `key` and reports whether the call is within
-// `limit` per `windowSeconds`. The read-modify-write runs in an IMMEDIATE
-// transaction, so concurrent requests can't both slip under the limit.
-export function consumeRateLimit(key, { limit, windowSeconds }) {
+// Fixed-window counter shared by EVERY process and instance using this database.
+// Consumes one unit for `key` and reports whether the call is within `limit` per
+// `windowSeconds`. It is ONE atomic statement: INSERT ... ON CONFLICT DO UPDATE
+// takes the row lock, so concurrent requests are serialized on the key and cannot
+// both slip under the limit (checked with a concurrency test). The `allowed`
+// column records the outcome of the last attempt so the same statement can report it.
+export async function consumeRateLimit(key, { limit, windowSeconds }) {
   const nowSec = Math.floor(Date.now() / 1000);
-  const run = db.transaction(() => {
-    const row = db.prepare("SELECT window_start, count FROM rate_limits WHERE key = ?").get(key);
-    if (!row || nowSec - row.window_start >= windowSeconds) {
-      db.prepare(
-        "INSERT INTO rate_limits (key, window_start, count) VALUES (?, ?, 1) ON CONFLICT(key) DO UPDATE SET window_start = excluded.window_start, count = 1"
-      ).run(key, nowSec);
-      return { allowed: true, remaining: limit - 1, retryAfterSeconds: 0 };
-    }
-    if (row.count >= limit) {
-      return { allowed: false, remaining: 0, retryAfterSeconds: Math.max(1, windowSeconds - (nowSec - row.window_start)) };
-    }
-    db.prepare("UPDATE rate_limits SET count = count + 1 WHERE key = ?").run(key);
-    return { allowed: true, remaining: limit - row.count - 1, retryAfterSeconds: 0 };
-  });
-  const result = run.immediate();
+  const row = await db.get(
+    `INSERT INTO rate_limits AS r (key, window_start, count, allowed)
+     VALUES (@key, @now, 1, TRUE)
+     ON CONFLICT (key) DO UPDATE SET
+       window_start = CASE WHEN @now - r.window_start >= @window THEN @now ELSE r.window_start END,
+       count = CASE WHEN @now - r.window_start >= @window THEN 1
+                    WHEN r.count >= @limit THEN r.count
+                    ELSE r.count + 1 END,
+       allowed = CASE WHEN @now - r.window_start >= @window THEN TRUE
+                      WHEN r.count >= @limit THEN FALSE
+                      ELSE TRUE END
+     RETURNING window_start, count, allowed`,
+    { key, now: nowSec, window: windowSeconds, limit }
+  );
 
   // Opportunistic cleanup of long-expired windows (bounded, cheap).
   if (Math.random() < 0.02) {
-    db.prepare("DELETE FROM rate_limits WHERE window_start < ?").run(nowSec - 86400);
+    await db.run("DELETE FROM rate_limits WHERE window_start < ?", [nowSec - 86400]);
   }
-  return result;
+
+  if (row.allowed) return { allowed: true, remaining: Math.max(0, limit - row.count), retryAfterSeconds: 0 };
+  return { allowed: false, remaining: 0, retryAfterSeconds: Math.max(1, windowSeconds - (nowSec - row.window_start)) };
 }

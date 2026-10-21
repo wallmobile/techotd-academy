@@ -36,7 +36,7 @@ export async function createClassSessionAction(_prevState, formData) {
     return { status: "error", errors, values };
   }
 
-  const session = createClassSession({
+  const session = await createClassSession({
     batchId: values.batchId,
     title: values.title.trim(),
     sessionDate: values.sessionDate,
@@ -66,7 +66,7 @@ export async function updateClassSessionAction(_prevState, formData) {
   // THAT against this trainer's assignments, so a forged/edited batchId
   // in the submitted form can't move a session outside the batch it
   // actually belongs to, or grant access it doesn't have.
-  const existing = getClassSessionById(values.classSessionId);
+  const existing = await getClassSessionById(values.classSessionId);
   if (!existing || !ctx.batchIds.includes(existing.batchId)) {
     return { status: "error", errors: {}, formError: "You don't have access to this class session.", values };
   }
@@ -79,7 +79,7 @@ export async function updateClassSessionAction(_prevState, formData) {
     return { status: "error", errors, values };
   }
 
-  updateClassSession(existing.id, {
+  await updateClassSession(existing.id, {
     title: values.title.trim(),
     sessionDate: values.sessionDate,
     startTime: values.startTime,

@@ -57,11 +57,11 @@ export async function getOpenJobsPage({ q, employmentType, workMode, page }) {
   const user = await currentStudent();
   const empty = { rows: [], page: 1, totalPages: 1, pageSize: JOBS_PAGE_SIZE, total: 0, appliedJobIds: [] };
   if (!user) return empty;
-  const probe = listOpenJobs({ q, employmentType, workMode, limit: 1, offset: 0 });
+  const probe = await listOpenJobs({ q, employmentType, workMode, limit: 1, offset: 0 });
   const totalPages = Math.max(1, Math.ceil(probe.total / JOBS_PAGE_SIZE));
   const current = Math.min(Math.max(1, page || 1), totalPages);
-  const { rows, total } = listOpenJobs({ q, employmentType, workMode, limit: JOBS_PAGE_SIZE, offset: (current - 1) * JOBS_PAGE_SIZE });
-  return { rows: rows.map(publicJob), page: current, totalPages, pageSize: JOBS_PAGE_SIZE, total, appliedJobIds: listAppliedJobIds(user.id) };
+  const { rows, total } = await listOpenJobs({ q, employmentType, workMode, limit: JOBS_PAGE_SIZE, offset: (current - 1) * JOBS_PAGE_SIZE });
+  return { rows: rows.map(publicJob), page: current, totalPages, pageSize: JOBS_PAGE_SIZE, total, appliedJobIds: await listAppliedJobIds(user.id) };
 }
 
 // A job is viewable when it is open — or when this student already applied
@@ -71,25 +71,25 @@ export async function getOpenJobsPage({ q, employmentType, workMode, page }) {
 export async function getJobForStudent(jobId) {
   const user = await currentStudent();
   if (!user) return null;
-  const job = getJobById(jobId);
+  const job = await getJobById(jobId);
   if (!job) return null;
-  const application = getStudentApplicationForJob(user.id, job.id);
+  const application = await getStudentApplicationForJob(user.id, job.id);
   const open = isJobOpen(job);
   if (!open && !application) return null;
   return {
     job: publicJob(job),
     open,
     application,
-    canApply: open && !application && studentCanApply(user.id),
+    canApply: open && !application && await studentCanApply(user.id),
     canWithdraw: Boolean(application && STUDENT_WITHDRAWABLE.includes(application.status)),
-    eligible: studentCanApply(user.id),
+    eligible: await studentCanApply(user.id),
   };
 }
 
 export async function getMyApplications() {
   const user = await currentStudent();
   if (!user) return [];
-  return listStudentApplications(user.id);
+  return await listStudentApplications(user.id);
 }
 
 // Applicant = the session student; the browser supplies only the job id and
@@ -99,14 +99,14 @@ export async function applyToJob({ jobId, coverMessage }) {
   if (!user) return fail("forbidden");
   const message = typeof coverMessage === "string" ? coverMessage.trim() : "";
   if (message.length > MAX.cover) return fail("cover_long");
-  if (!studentCanApply(user.id)) return fail("not_eligible");
-  const result = applyTx({ jobId: typeof jobId === "string" ? jobId : "", userId: user.id, coverMessage: message });
+  if (!await studentCanApply(user.id)) return fail("not_eligible");
+  const result = await applyTx({ jobId: typeof jobId === "string" ? jobId : "", userId: user.id, coverMessage: message });
   return result.ok ? { ok: true, jobId } : fail(result.reason);
 }
 
 export async function withdrawApplication({ applicationId }) {
   const user = await currentStudent();
   if (!user) return fail("forbidden");
-  const result = withdrawTx({ applicationId: typeof applicationId === "string" ? applicationId : "", userId: user.id, allowed: STUDENT_WITHDRAWABLE });
+  const result = await withdrawTx({ applicationId: typeof applicationId === "string" ? applicationId : "", userId: user.id, allowed: STUDENT_WITHDRAWABLE });
   return result.ok ? { ok: true } : fail(result.reason);
 }

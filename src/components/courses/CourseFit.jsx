@@ -6,7 +6,7 @@ import { CheckIcon, Gradient } from "@/components/training/icons";
 import { listCourses, getRelatedCourses } from "@/lib/catalog";
 
 /** Honest "maybe not yet" pointers, derived from the course's level. */
-function buildCaveats(course) {
+async function buildCaveats(course) {
   if (course.level === "Beginner") {
     return {
       points: [
@@ -19,8 +19,8 @@ function buildCaveats(course) {
 
   // Prefer a related beginner course (curated next steps first), then any beginner course.
   const starter =
-    getRelatedCourses(course, 8).find((c) => c.level === "Beginner") ??
-    listCourses({ publishedOnly: true }).find((c) => c.level === "Beginner" && c.slug !== course.slug);
+    (await getRelatedCourses(course, 8)).find((c) => c.level === "Beginner") ??
+    (await listCourses({ publishedOnly: true })).find((c) => c.level === "Beginner" && c.slug !== course.slug);
 
   return {
     points: [
@@ -31,9 +31,9 @@ function buildCaveats(course) {
   };
 }
 
-export function CourseFit({ course }) {
+export async function CourseFit({ course }) {
   const audience = course.audience ?? [];
-  const caveats = buildCaveats(course);
+  const caveats = await buildCaveats(course);
 
   return (
     <section id="fit" className="scroll-mt-36 bg-surface py-12 sm:py-14 lg:py-20">

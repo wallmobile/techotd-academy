@@ -18,8 +18,8 @@ const EMPTY_PAGE = { rows: [], page: 1, totalPages: 1, pageSize: PAGE_SIZE, tota
 
 export async function getStudentsPage({ q, sort, page }) {
   if (!(await getAdminContext())) return EMPTY_PAGE;
-  const probe = paginate(listStudentsPage({ q, sort, limit: 1, offset: 0 }).total, page);
-  const { rows, total } = listStudentsPage({ q, sort, limit: PAGE_SIZE, offset: (probe.page - 1) * PAGE_SIZE });
+  const probe = paginate((await listStudentsPage({ q, sort, limit: 1, offset: 0 })).total, page);
+  const { rows, total } = await listStudentsPage({ q, sort, limit: PAGE_SIZE, offset: (probe.page - 1) * PAGE_SIZE });
   return { rows, ...paginate(total, probe.page) };
 }
 
@@ -27,29 +27,29 @@ export async function getStudentsPage({ q, sort, page }) {
 // identically. Selects no password hash, session or reset-token data.
 export async function getStudentDetailForAdmin(userId) {
   if (!(await getAdminContext())) return null;
-  const user = getUserRow(userId);
+  const user = await getUserRow(userId);
   if (!user || user.role !== "STUDENT") return null;
 
-  const profile = getStudentProfileRowByUserId(user.id);
+  const profile = await getStudentProfileRowByUserId(user.id);
   const base = { user, profile };
   if (!profile) {
     return { ...base, courses: [], batches: [], attendance: null, submissions: [], certificates: [] };
   }
 
-  const courses = listCourseEnrollmentsForStudent(profile.id).map((enrollment) => {
-    const course = getCourse(enrollment.courseSlug);
+  const courses = await Promise.all((await listCourseEnrollmentsForStudent(profile.id)).map(async (enrollment) => {
+    const course = await getCourse(enrollment.courseSlug);
     return {
       id: enrollment.id,
       status: enrollment.status,
       courseSlug: enrollment.courseSlug,
       title: course?.title ?? enrollment.courseSlug,
-      progressPercent: course ? computeCourseProgress(profile.id, course).percent : null,
+      progressPercent: course ? (await computeCourseProgress(profile.id, course)).percent : null,
     };
-  });
+  }));
 
-  const batches = listBatchEnrollmentsForStudent(profile.id).map((enrollment) => {
-    const batch = getBatch(enrollment.batchId);
-    const course = batch ? getCourse(batch.courseSlug) : null;
+  const batches = await Promise.all((await listBatchEnrollmentsForStudent(profile.id)).map(async (enrollment) => {
+    const batch = await getBatch(enrollment.batchId);
+    const course = batch ? await getCourse(batch.courseSlug) : null;
     return {
       id: enrollment.id,
       status: enrollment.status,
@@ -57,20 +57,20 @@ export async function getStudentDetailForAdmin(userId) {
       mode: batch?.mode ?? null,
       courseTitle: course?.title ?? null,
     };
-  });
+  }));
 
-  const records = listAttendanceForStudent(profile.id);
+  const records = await listAttendanceForStudent(profile.id);
   const attendance = { total: records.length, byStatus: {} };
   for (const record of records) {
     attendance.byStatus[record.status] = (attendance.byStatus[record.status] || 0) + 1;
   }
 
-  const certificates = listCertificatesForStudent(profile.id).map((c) => ({
+  const certificates = await Promise.all((await listCertificatesForStudent(profile.id)).map(async (c) => ({
     id: c.id,
     certificateNumber: c.certificateNumber,
     status: c.status,
-    courseTitle: getCourse(c.courseSlug)?.title ?? c.courseSlug,
-  }));
+    courseTitle: (await getCourse(c.courseSlug))?.title ?? c.courseSlug,
+  })));
 
-  return { ...base, courses, batches, attendance, submissions: listSubmissionsForStudent(profile.id), certificates };
+  return { ...base, courses, batches, attendance, submissions: await listSubmissionsForStudent(profile.id), certificates };
 }

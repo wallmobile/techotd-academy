@@ -19,8 +19,8 @@ export async function getAttendanceSessionOptions() {
   const ctx = await getTrainerContext();
   if (!ctx) return [];
 
-  const assignedBatches = enrichAssignedBatches(ctx.batchIds);
-  return listSessionsForBatchIds(ctx.batchIds)
+  const assignedBatches = await enrichAssignedBatches(ctx.batchIds);
+  return (await listSessionsForBatchIds(ctx.batchIds))
     .map((session) => {
       const assigned = assignedBatches.find((ab) => ab.batch.id === session.batchId);
       if (!assigned) return null;
@@ -41,16 +41,16 @@ export async function getAttendanceRosterForSession(classSessionId) {
   const ctx = await getTrainerContext();
   if (!ctx) return null;
 
-  const session = getClassSessionById(classSessionId);
+  const session = await getClassSessionById(classSessionId);
   if (!session) return null;
   if (!ctx.batchIds.includes(session.batchId)) return null;
 
-  const assignedBatches = enrichAssignedBatches(ctx.batchIds);
+  const assignedBatches = await enrichAssignedBatches(ctx.batchIds);
   const assigned = assignedBatches.find((ab) => ab.batch.id === session.batchId);
   if (!assigned) return null;
 
-  const enrolledStudents = listEnrolledStudentsForBatchIds([session.batchId]);
-  const existingRecords = listAttendanceForClassSession(classSessionId);
+  const enrolledStudents = await listEnrolledStudentsForBatchIds([session.batchId]);
+  const existingRecords = await listAttendanceForClassSession(classSessionId);
   const recordByStudentId = new Map(existingRecords.map((r) => [r.studentId, r]));
 
   const roster = enrolledStudents.map((student) => ({
@@ -73,12 +73,12 @@ export async function saveAttendanceForSession(classSessionId, entries) {
   const ctx = await getTrainerContext();
   if (!ctx) return { ok: false, reason: "not_a_trainer" };
 
-  const session = getClassSessionById(classSessionId);
+  const session = await getClassSessionById(classSessionId);
   if (!session || !ctx.batchIds.includes(session.batchId)) {
     return { ok: false, reason: "not_owned" };
   }
 
-  const enrolledStudents = listEnrolledStudentsForBatchIds([session.batchId]);
+  const enrolledStudents = await listEnrolledStudentsForBatchIds([session.batchId]);
   const enrolledIds = new Set(enrolledStudents.map((s) => s.studentProfileId));
 
   const validRecords = entries
@@ -92,6 +92,6 @@ export async function saveAttendanceForSession(classSessionId, entries) {
 
   if (validRecords.length === 0) return { ok: false, reason: "no_valid_entries" };
 
-  markAttendanceBulk(validRecords);
+  await markAttendanceBulk(validRecords);
   return { ok: true, count: validRecords.length };
 }

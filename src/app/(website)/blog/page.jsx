@@ -86,8 +86,8 @@ function ResourceShelf() {
   );
 }
 
-export default function ResourcesPage() {
-  const courses = listCourses({ publishedOnly: true });
+export default async function ResourcesPage() {
+  const courses = await listCourses({ publishedOnly: true });
   const terms = Object.keys(techInfo)
     .sort((a, b) => a.localeCompare(b))
     .map((name) => ({
@@ -148,14 +148,14 @@ export default function ResourcesPage() {
           </div>
 
           <div className="mt-10 flex flex-col gap-6">
-            {paths.map((path) => (
+            {await Promise.all(paths.map(async (path) => (
               <Reveal key={path.title} className="rounded-3xl border border-border bg-surface p-6 shadow-card sm:p-8">
                 <h3 className="text-xl font-semibold text-dark">{path.title}</h3>
                 <p className="mt-1 text-sm text-muted">{path.blurb}</p>
                 <Reveal variants={staggerContainer} className="mt-6">
                   <ol className="grid items-stretch gap-3 sm:grid-cols-2 lg:flex lg:gap-0">
-                    {path.steps.map((slug, index) => {
-                      const course = getCourse(slug, { publishedOnly: true });
+                    {await Promise.all(path.steps.map(async (slug, index) => {
+                      const course = await getCourse(slug, { publishedOnly: true });
                       if (!course) return null;
                       return (
                         <RevealItem key={slug} as="li" className="flex flex-1 items-stretch lg:items-center">
@@ -183,11 +183,11 @@ export default function ResourcesPage() {
                           )}
                         </RevealItem>
                       );
-                    })}
+                    }))}
                   </ol>
                 </Reveal>
               </Reveal>
-            ))}
+            )))}
           </div>
         </Container>
       </section>

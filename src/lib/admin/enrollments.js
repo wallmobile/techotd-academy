@@ -38,13 +38,13 @@ export const ENROLLMENT_MESSAGES = {
 
 const fail = (reason) => ({ ok: false, reason, message: ENROLLMENT_MESSAGES[reason] });
 
-function courseBatchIds(courseSlug) {
-  return listBatches({ courseSlug }).map((b) => b.id);
+async function courseBatchIds(courseSlug) {
+  return (await listBatches({ courseSlug })).map((b) => b.id);
 }
 
-function describe(enrollment) {
-  const batch = getBatch(enrollment.batchId);
-  const course = batch ? getCourse(batch.courseSlug) : null;
+async function describe(enrollment) {
+  const batch = await getBatch(enrollment.batchId);
+  const course = batch ? await getCourse(batch.courseSlug) : null;
   return {
     ...enrollment,
     courseSlug: batch?.courseSlug ?? null,
@@ -61,43 +61,43 @@ export async function getEnrollmentsPage({ q, course, batch, status, sort, page 
   if (!(await getAdminContext())) return EMPTY_PAGE;
 
   let batchIds = null;
-  if (course) batchIds = courseBatchIds(course);
+  if (course) batchIds = await courseBatchIds(course);
   if (batch) batchIds = batchIds ? batchIds.filter((id) => id === batch) : [batch];
 
   const filters = { q, status, sort, batchIds };
-  const probe = listEnrollments({ ...filters, limit: 1, offset: 0 });
+  const probe = await listEnrollments({ ...filters, limit: 1, offset: 0 });
   const totalPages = Math.max(1, Math.ceil(probe.total / ENROLLMENTS_PAGE_SIZE));
   const current = Math.min(Math.max(1, page || 1), totalPages);
-  const { rows, total } = listEnrollments({ ...filters, limit: ENROLLMENTS_PAGE_SIZE, offset: (current - 1) * ENROLLMENTS_PAGE_SIZE });
-  return { rows: rows.map(describe), page: current, totalPages, pageSize: ENROLLMENTS_PAGE_SIZE, total };
+  const { rows, total } = await listEnrollments({ ...filters, limit: ENROLLMENTS_PAGE_SIZE, offset: (current - 1) * ENROLLMENTS_PAGE_SIZE });
+  return { rows: await Promise.all(rows.map(describe)), page: current, totalPages, pageSize: ENROLLMENTS_PAGE_SIZE, total };
 }
 
 export async function getEnrollmentDetail(enrollmentId) {
   if (!(await getAdminContext())) return null;
-  const enrollment = getEnrollmentById(enrollmentId);
-  return enrollment ? describe(enrollment) : null;
+  const enrollment = await getEnrollmentById(enrollmentId);
+  return enrollment ? await describe(enrollment) : null;
 }
 
 export async function getStudentEnrollments(userId) {
   if (!(await getAdminContext())) return [];
-  return listEnrollmentsForUser(userId).map(describe);
+  return await Promise.all((await listEnrollmentsForUser(userId)).map(describe));
 }
 
 export async function getEnrollmentCounts() {
   if (!(await getAdminContext())) return null;
-  return countEnrollmentsByStatus();
+  return await countEnrollmentsByStatus();
 }
 
-export function getBatchFilterOptions() {
-  return listBatches().map((b) => ({
+export async function getBatchFilterOptions() {
+  return await Promise.all((await listBatches()).map(async (b) => ({
     value: b.id,
     courseSlug: b.courseSlug,
-    label: `${getCourse(b.courseSlug)?.title ?? b.courseSlug} — ${b.mode} (${b.startDate})`,
-  }));
+    label: `${(await getCourse(b.courseSlug))?.title ?? b.courseSlug} — ${b.mode} (${b.startDate})`,
+  })));
 }
 
-export function getCourseFilterOptions() {
-  return listCourses().map((c) => ({ value: c.slug, label: c.title }));
+export async function getCourseFilterOptions() {
+  return (await listCourses()).map((c) => ({ value: c.slug, label: c.title }));
 }
 
 // Data for /admin/enrollments/new. `studentId`/`course`/`batch` come from
@@ -106,19 +106,19 @@ export function getCourseFilterOptions() {
 export async function getEnrollmentFormData({ studentId, studentQuery, course, batch }) {
   if (!(await getAdminContext())) return null;
 
-  const student = studentId ? getUserForEnrollment(studentId) : null;
+  const student = studentId ? await getUserForEnrollment(studentId) : null;
   const validStudent = student && student.role === "STUDENT" && student.status === "ACTIVE" ? student : null;
 
-  const courseOk = course && getCourse(course, { publishedOnly: true }) ? course : "";
-  const batchRow = batch ? getBatch(batch) : null;
+  const courseOk = course && await getCourse(course, { publishedOnly: true }) ? course : "";
+  const batchRow = batch ? await getBatch(batch) : null;
   const batchOk = batchRow && (!courseOk || batchRow.courseSlug === courseOk) ? batchRow : null;
 
   return {
     student: validStudent ? { id: validStudent.id, name: validStudent.name, email: validStudent.email } : null,
-    candidates: validStudent ? [] : searchActiveStudents(studentQuery || ""),
+    candidates: validStudent ? [] : await searchActiveStudents(studentQuery || ""),
     // New enrollments only: published courses, open/upcoming batches.
-    courses: listCourses({ publishedOnly: true }).map((c) => ({ value: c.slug, label: c.title })),
-    batches: listBatches({ publicOnly: true })
+    courses: (await listCourses({ publishedOnly: true })).map((c) => ({ value: c.slug, label: c.title })),
+    batches: (await listBatches({ publicOnly: true }))
       .filter((b) => ENROLLABLE_BATCH_STATUSES.includes(b.status))
       .map((b) => ({
         value: b.id,
@@ -135,30 +135,30 @@ export async function getEnrollmentFormData({ studentId, studentQuery, course, b
 export async function createEnrollment({ studentUserId, courseSlug, batchId }) {
   if (!(await getAdminContext())) return FORBIDDEN;
 
-  const student = getUserForEnrollment(studentUserId);
+  const student = await getUserForEnrollment(studentUserId);
   if (!student || student.role !== "STUDENT") return fail("student_invalid");
   if (student.status !== "ACTIVE") return fail("student_inactive");
 
-  if (typeof courseSlug !== "string" || !getCourse(courseSlug)) return fail("course_invalid");
-  if (!getCourse(courseSlug, { publishedOnly: true })) return fail("course_unpublished");
-  const batch = typeof batchId === "string" ? getBatch(batchId) : null;
+  if (typeof courseSlug !== "string" || !await getCourse(courseSlug)) return fail("course_invalid");
+  if (!await getCourse(courseSlug, { publishedOnly: true })) return fail("course_unpublished");
+  const batch = typeof batchId === "string" ? await getBatch(batchId) : null;
   if (!batch) return fail("batch_invalid");
   if (batch.courseSlug !== courseSlug) return fail("batch_mismatch");
   if (!ENROLLABLE_BATCH_STATUSES.includes(batch.status)) return fail("batch_closed");
 
-  const result = createEnrollmentTx({
+  const result = await createEnrollmentTx({
     studentUserId: student.id,
     courseSlug,
-    courseBatchIds: courseBatchIds(courseSlug),
+    courseBatchIds: await courseBatchIds(courseSlug),
     batchId: batch.id,
   });
   if (!result.ok) return fail(result.reason);
   // Notify only after the enrollment transaction committed.
-  const stamp = result.reactivated ? getEnrollmentById(result.enrollmentId)?.updatedAt ?? "" : "";
+  const stamp = result.reactivated ? (await getEnrollmentById(result.enrollmentId))?.updatedAt ?? "" : "";
   await notifyEnrolled({
     userId: student.id,
     enrollmentId: result.enrollmentId,
-    courseTitle: getCourse(courseSlug)?.title ?? courseSlug,
+    courseTitle: (await getCourse(courseSlug))?.title ?? courseSlug,
     stamp,
   });
   return { ok: true, enrollmentId: result.enrollmentId, studentUserId: student.id };
@@ -170,19 +170,19 @@ export async function setEnrollmentStatus(enrollmentId, status) {
   if (!(await getAdminContext())) return FORBIDDEN;
   if (!ENROLLMENT_STATUSES.includes(status)) return fail("status_invalid");
 
-  const enrollment = getEnrollmentById(enrollmentId);
+  const enrollment = await getEnrollmentById(enrollmentId);
   if (!enrollment) return fail("not_found");
-  const batch = getBatch(enrollment.batchId);
+  const batch = await getBatch(enrollment.batchId);
   if (!batch) return fail("batch_invalid");
   if (status === "ACTIVE" && enrollment.status !== "ACTIVE" && !ENROLLABLE_BATCH_STATUSES.includes(batch.status)) {
     return fail("batch_closed");
   }
 
-  setEnrollmentStatusTx({
+  await setEnrollmentStatusTx({
     enrollmentId: enrollment.id,
     status,
     courseSlug: batch.courseSlug,
-    courseBatchIds: courseBatchIds(batch.courseSlug),
+    courseBatchIds: await courseBatchIds(batch.courseSlug),
   });
   // Only an actual change notifies (a repeated identical request is silent).
   if (enrollment.status !== status) {
@@ -190,8 +190,8 @@ export async function setEnrollmentStatus(enrollmentId, status) {
       userId: enrollment.studentUserId,
       enrollmentId: enrollment.id,
       status,
-      courseTitle: getCourse(batch.courseSlug)?.title ?? batch.courseSlug,
-      stamp: getEnrollmentById(enrollment.id)?.updatedAt ?? "",
+      courseTitle: (await getCourse(batch.courseSlug))?.title ?? batch.courseSlug,
+      stamp: (await getEnrollmentById(enrollment.id))?.updatedAt ?? "",
     });
   }
   return { ok: true, enrollmentId: enrollment.id, studentUserId: enrollment.studentUserId, status };

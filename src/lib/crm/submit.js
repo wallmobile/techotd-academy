@@ -51,16 +51,16 @@ export async function submitLead(payload, variant) {
   // offers real values), so reject instead of storing a dangling reference.
   const courseSlug = str(payload.interestedCourse, 100);
   // Only published courses can be enquired about; an unpublished one is invalid input.
-  if (courseSlug && !getCourse(courseSlug, { publishedOnly: true })) return { ok: false, error: INVALID_MESSAGE };
+  if (courseSlug && !await getCourse(courseSlug, { publishedOnly: true })) return { ok: false, error: INVALID_MESSAGE };
 
   const mode = str(payload.preferredMode, 40);
   if (mode && !trainingModes.some((m) => m.slug === mode)) return { ok: false, error: INVALID_MESSAGE };
 
   const batchId = str(payload.preferredBatch, 100);
   if (batchId) {
-    const batch = getBatch(batchId);
+    const batch = await getBatch(batchId);
     if (!batch || (courseSlug && batch.courseSlug !== courseSlug)) return { ok: false, error: INVALID_MESSAGE };
-    if (!PUBLIC_BATCH_STATUSES.includes(batch.status) || !isCoursePublished(batch.courseSlug)) return { ok: false, error: INVALID_MESSAGE };
+    if (!PUBLIC_BATCH_STATUSES.includes(batch.status) || !await isCoursePublished(batch.courseSlug)) return { ok: false, error: INVALID_MESSAGE };
   }
 
   const experienceLevel = str(payload.experienceLevel, 20);
@@ -90,7 +90,7 @@ export async function submitLead(payload, variant) {
     // Collapse an accidental double-submit (identical request within a
     // minute) into the lead already stored; a genuine later enquiry is
     // always a new lead.
-    if (!findRecentDuplicateLead(lead)) createLead(lead);
+    if (!await findRecentDuplicateLead(lead)) await createLead(lead);
     return { ok: true, receivedAt: new Date().toISOString() };
   } catch (error) {
     // Safe diagnostics only: no SQL text, paths, or submitted personal data.

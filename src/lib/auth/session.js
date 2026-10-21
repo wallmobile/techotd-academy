@@ -26,7 +26,7 @@ function cookieOptions({ remember, maxAgeSeconds }) {
 // HTTP-only cookie. Must be called from a Server Action or Route Handler
 // (Next.js only allows setting cookies there, not during rendering).
 export async function startSession(userId, { remember = false } = {}) {
-  const { token, maxAgeSeconds } = createSession(userId, { remember });
+  const { token, maxAgeSeconds } = await createSession(userId, { remember });
   const cookieStore = await cookies();
   cookieStore.set(SESSION_COOKIE_NAME, token, cookieOptions({ remember, maxAgeSeconds }));
 }
@@ -36,7 +36,7 @@ export async function startSession(userId, { remember = false } = {}) {
 export async function endSession() {
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE_NAME)?.value;
-  deleteSessionByToken(token);
+  await deleteSessionByToken(token);
   cookieStore.delete(SESSION_COOKIE_NAME);
 }
 
@@ -45,7 +45,7 @@ export async function endSession() {
 export async function getUserFromSessionCookie() {
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE_NAME)?.value;
-  return getUserBySessionToken(token);
+  return await getUserBySessionToken(token);
 }
 
 // Whether the CURRENT browser's session was a "remembered" (persistent)
@@ -55,5 +55,5 @@ export async function getUserFromSessionCookie() {
 export async function isCurrentSessionRemembered() {
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE_NAME)?.value;
-  return isRememberedSessionToken(token);
+  return await isRememberedSessionToken(token);
 }

@@ -21,7 +21,7 @@ export default async function AdminBatchesPage({ searchParams }) {
   const { user } = await requireAdminContext();
   const params = parseBatchParams(await searchParams);
   const result = await getBatchesPage(params);
-  const options = getBatchFormOptions();
+  const options = await getBatchFormOptions();
   const hasFilters = params.q || params.course || params.status || params.mode || params.sort !== "start";
 
   const columns = [

@@ -1,14 +1,19 @@
--- TechOTD Academy — authentication schema (Phase 7)
---
--- Only the tables required for authentication/authorization are defined
--- here. Domain modules (courses, enrollments, attendance, payments,
--- certificates, etc.) are intentionally NOT modeled yet.
---
--- Written in plain, portable SQL (no SQLite-only syntax beyond
--- AUTOINCREMENT/TEXT typing) so the same shape maps directly onto a
--- PostgreSQL schema later; see src/lib/db/client.js for the swap point.
+// PostgreSQL schema (generated from the former SQLite schema, then maintained by hand).
+// A JS module rather than a .sql file so it is always bundled with the server code
+// (serverless deployments do not ship loose files). Applied by ensureSchema() in client.js
+// under an advisory lock; every statement is idempotent (IF NOT EXISTS / OR REPLACE).
+export const SCHEMA_SQL = `-- TechOTD Academy: PostgreSQL schema.
+-- Timestamps are TEXT columns holding the same UTC strings the application has always
+-- used ('YYYY-MM-DD HH24:MI:SS' from app_now(), or ISO-8601 written by the app), so all
+-- ordering/comparison logic is unchanged. app_now(modifier) replaces SQLite's
+-- datetime('now', modifier) (modifier such as '-60 seconds' or '+30 minutes').
+CREATE OR REPLACE FUNCTION app_now(modifier text DEFAULT NULL) RETURNS text
+LANGUAGE sql STABLE AS $$
+  SELECT to_char(timezone('utc', now() + COALESCE(modifier, '0 seconds')::interval), 'YYYY-MM-DD HH24:MI:SS')
+$$;
 
 CREATE TABLE IF NOT EXISTS users (
+  email_notifications INTEGER NOT NULL DEFAULT 1,
   id                 TEXT PRIMARY KEY,
   name               TEXT NOT NULL,
   email              TEXT NOT NULL UNIQUE,
@@ -17,8 +22,8 @@ CREATE TABLE IF NOT EXISTS users (
   role               TEXT NOT NULL DEFAULT 'STUDENT',
   status             TEXT NOT NULL DEFAULT 'ACTIVE',
   email_verified_at  TEXT,
-  created_at         TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at         TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at         TEXT NOT NULL DEFAULT app_now(),
+  updated_at         TEXT NOT NULL DEFAULT app_now()
 );
 
 CREATE INDEX IF NOT EXISTS idx_users_role ON users (role);
@@ -33,7 +38,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   user_id     TEXT NOT NULL REFERENCES users (id) ON DELETE CASCADE,
   token_hash  TEXT NOT NULL UNIQUE,
   expires_at  TEXT NOT NULL,
-  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at  TEXT NOT NULL DEFAULT app_now()
 );
 
 CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions (user_id);
@@ -48,7 +53,7 @@ CREATE TABLE IF NOT EXISTS password_reset_tokens (
   token_hash  TEXT NOT NULL UNIQUE,
   expires_at  TEXT NOT NULL,
   used_at     TEXT,
-  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at  TEXT NOT NULL DEFAULT app_now()
 );
 
 CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user_id ON password_reset_tokens (user_id);
@@ -65,8 +70,8 @@ CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user_id ON password_reset_t
 -- in src/data/courses.js and src/data/batches.js (file-based, not in
 -- SQLite). Rather than duplicating course/batch fields into the database,
 -- enrollment rows store only the STABLE identifier already used to look
--- those records up elsewhere in the app — `course_slug` (matches
--- courses.js's `slug`) and `batch_id` (matches batches.js's `id`), exactly
+-- those records up elsewhere in the app — \`course_slug\` (matches
+-- courses.js's \`slug\`) and \`batch_id\` (matches batches.js's \`id\`), exactly
 -- how batches.js already references courses.js. These are therefore NOT
 -- SQL foreign keys (there is no courses/batches table to reference) —
 -- validity is checked in the application layer by looking the slug/id up
@@ -76,9 +81,9 @@ CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user_id ON password_reset_t
 -- referential integrity on those two columns by itself.
 -- --------------------------------------------------------------------------
 
--- One row per user with the STUDENT role. Kept separate from `users` (per
+-- One row per user with the STUDENT role. Kept separate from \`users\` (per
 -- "keep User authentication separate from student-domain data") — auth
--- fields (name/email/password/role) stay in `users` and are never
+-- fields (name/email/password/role) stay in \`users\` and are never
 -- duplicated here. UNIQUE(user_id) is what makes "a user must not have
 -- multiple StudentProfile records" an enforced constraint, not just a
 -- convention.
@@ -89,8 +94,8 @@ CREATE TABLE IF NOT EXISTS student_profiles (
   city        TEXT,
   avatar_url  TEXT,
   bio         TEXT,
-  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at  TEXT NOT NULL DEFAULT app_now(),
+  updated_at  TEXT NOT NULL DEFAULT app_now()
 );
 
 -- A student's relationship to a course from the file-based catalog. See
@@ -102,9 +107,9 @@ CREATE TABLE IF NOT EXISTS course_enrollments (
   student_id    TEXT NOT NULL REFERENCES student_profiles (id) ON DELETE CASCADE,
   course_slug   TEXT NOT NULL,
   status        TEXT NOT NULL DEFAULT 'ACTIVE',
-  enrolled_at   TEXT NOT NULL DEFAULT (datetime('now')),
-  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at    TEXT NOT NULL DEFAULT (datetime('now')),
+  enrolled_at   TEXT NOT NULL DEFAULT app_now(),
+  created_at    TEXT NOT NULL DEFAULT app_now(),
+  updated_at    TEXT NOT NULL DEFAULT app_now(),
   UNIQUE (student_id, course_slug)
 );
 
@@ -117,9 +122,9 @@ CREATE TABLE IF NOT EXISTS batch_enrollments (
   student_id    TEXT NOT NULL REFERENCES student_profiles (id) ON DELETE CASCADE,
   batch_id      TEXT NOT NULL,
   status        TEXT NOT NULL DEFAULT 'ACTIVE',
-  enrolled_at   TEXT NOT NULL DEFAULT (datetime('now')),
-  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at    TEXT NOT NULL DEFAULT (datetime('now')),
+  enrolled_at   TEXT NOT NULL DEFAULT app_now(),
+  created_at    TEXT NOT NULL DEFAULT app_now(),
+  updated_at    TEXT NOT NULL DEFAULT app_now(),
   UNIQUE (student_id, batch_id)
 );
 
@@ -145,7 +150,7 @@ CREATE INDEX IF NOT EXISTS idx_batch_enrollments_student_id ON batch_enrollments
 -- repeated "Mark as Complete" clicks idempotent: the same INSERT ...
 -- ON CONFLICT DO UPDATE always targets the one existing row.
 --
--- `completed_at` is set once, the first time a lesson is completed, and
+-- \`completed_at\` is set once, the first time a lesson is completed, and
 -- deliberately left untouched by later idempotent completions (see
 -- src/lib/db/lessonProgress.js) — it records "when this was first
 -- finished", not "when it was last touched".
@@ -158,9 +163,9 @@ CREATE TABLE IF NOT EXISTS lesson_progress (
   lesson_index      INTEGER NOT NULL,
   completed         INTEGER NOT NULL DEFAULT 0,
   completed_at      TEXT,
-  last_accessed_at  TEXT NOT NULL DEFAULT (datetime('now')),
-  created_at        TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at        TEXT NOT NULL DEFAULT (datetime('now')),
+  last_accessed_at  TEXT NOT NULL DEFAULT app_now(),
+  created_at        TEXT NOT NULL DEFAULT app_now(),
+  updated_at        TEXT NOT NULL DEFAULT app_now(),
   UNIQUE (student_id, course_slug, module_index, lesson_index)
 );
 
@@ -171,7 +176,7 @@ CREATE INDEX IF NOT EXISTS idx_lesson_progress_student_course ON lesson_progress
 --
 -- Minimal, future-compatible model for a single scheduled live class
 -- belonging to a batch. Same non-FK reference strategy as everywhere else
--- in this schema: `batch_id` matches batches.js's `id` (file-based
+-- in this schema: \`batch_id\` matches batches.js's \`id\` (file-based
 -- catalog, not duplicated here) rather than being a SQL foreign key —
 -- validity is checked in the application layer.
 --
@@ -193,8 +198,8 @@ CREATE TABLE IF NOT EXISTS class_sessions (
   meeting_url   TEXT,           -- NULL until a real link exists — never fabricated
   location      TEXT,
   status        TEXT NOT NULL DEFAULT 'SCHEDULED',
-  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at    TEXT NOT NULL DEFAULT app_now(),
+  updated_at    TEXT NOT NULL DEFAULT app_now()
 );
 
 CREATE INDEX IF NOT EXISTS idx_class_sessions_batch_id ON class_sessions (batch_id);
@@ -203,7 +208,7 @@ CREATE INDEX IF NOT EXISTS idx_class_sessions_date ON class_sessions (session_da
 -- --------------------------------------------------------------------------
 -- Assignments + submissions (Phase 8.6)
 --
--- `assignments.course_slug`/`batch_id` follow the same non-FK,
+-- \`assignments.course_slug\`/\`batch_id\` follow the same non-FK,
 -- validated-in-the-application-layer reference strategy as everywhere
 -- else in this schema (course_slug matches src/data/courses.js, batch_id
 -- matches src/data/batches.js; batch_id is nullable — a course-wide
@@ -213,14 +218,14 @@ CREATE INDEX IF NOT EXISTS idx_class_sessions_date ON class_sessions (session_da
 -- student-facing list honestly shows an empty state rather than inventing
 -- assignments.
 --
--- `assignment_submissions.assignment_id` IS a real SQL foreign key (unlike
+-- \`assignment_submissions.assignment_id\` IS a real SQL foreign key (unlike
 -- the course/batch references above) — assignments are native database
 -- rows here, not file-based catalog data, so referential integrity can
 -- and should be enforced.
 --
 -- No grading fields (score, feedback, graded_by, etc.) are added — out of
 -- scope for this phase ("Do not create grading fields unless needed";
--- "Do not build trainer grading dashboard"). `status` on a submission
+-- "Do not build trainer grading dashboard"). \`status\` on a submission
 -- exists so a future grading phase has somewhere to record REVIEWED /
 -- RETURNED without a migration; nothing in this phase ever sets it to
 -- anything but SUBMITTED.
@@ -245,21 +250,21 @@ CREATE TABLE IF NOT EXISTS assignments (
   -- src/lib/db/client.js (CREATE TABLE IF NOT EXISTS never alters an
   -- existing table).
   created_by    TEXT REFERENCES users (id) ON DELETE SET NULL,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at    TEXT NOT NULL DEFAULT app_now(),
+  updated_at    TEXT NOT NULL DEFAULT app_now()
 );
 
 CREATE INDEX IF NOT EXISTS idx_assignments_course_slug ON assignments (course_slug);
 CREATE INDEX IF NOT EXISTS idx_assignments_batch_id ON assignments (batch_id);
 
--- `score`/`feedback`/`evaluated_at` (Phase 9.2): the smallest possible
--- addition for trainer evaluation, per the audit that found `status`
+-- \`score\`/\`feedback\`/\`evaluated_at\` (Phase 9.2): the smallest possible
+-- addition for trainer evaluation, per the audit that found \`status\`
 -- already anticipated this ("status exists so a future grading phase has
 -- somewhere to record REVIEWED / RETURNED without a migration" — see the
 -- comment above this table). No separate "evaluations" or
 -- "trainer_feedback" table was created — this IS the one source of truth
 -- a trainer writes to and a student's existing assignment page reads
--- from. `score` is a plain nullable integer (0-100), not a full grading
+-- from. \`score\` is a plain nullable integer (0-100), not a full grading
 -- rubric — deliberately minimal, no weighting/rubric system was invented.
 CREATE TABLE IF NOT EXISTS assignment_submissions (
   id                TEXT PRIMARY KEY,
@@ -267,13 +272,13 @@ CREATE TABLE IF NOT EXISTS assignment_submissions (
   student_id        TEXT NOT NULL REFERENCES student_profiles (id) ON DELETE CASCADE,
   submission_text   TEXT,
   file_url          TEXT,
-  submitted_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  submitted_at      TEXT NOT NULL DEFAULT app_now(),
   status            TEXT NOT NULL DEFAULT 'SUBMITTED',
   score             INTEGER,
   feedback          TEXT,
   evaluated_at      TEXT,
-  created_at        TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at        TEXT NOT NULL DEFAULT (datetime('now')),
+  created_at        TEXT NOT NULL DEFAULT app_now(),
+  updated_at        TEXT NOT NULL DEFAULT app_now(),
   UNIQUE (assignment_id, student_id)
 );
 
@@ -282,9 +287,9 @@ CREATE INDEX IF NOT EXISTS idx_assignment_submissions_student_id ON assignment_s
 -- --------------------------------------------------------------------------
 -- Attendance + certificates (Phase 8.7)
 --
--- `attendance_records.batch_id` follows the same non-FK catalog-reference
+-- \`attendance_records.batch_id\` follows the same non-FK catalog-reference
 -- strategy as the rest of this schema (matches src/data/batches.js).
--- `class_session_id` IS a real SQL foreign key — class_sessions is a
+-- \`class_session_id\` IS a real SQL foreign key — class_sessions is a
 -- native DB table (Phase 8.5), not file-based catalog data — and is
 -- nullable because not every attendance record necessarily traces back to
 -- a specific scheduled session in this minimal model. ON DELETE SET NULL
@@ -293,7 +298,7 @@ CREATE INDEX IF NOT EXISTS idx_assignment_submissions_student_id ON assignment_s
 --
 -- UNIQUE(student_id, class_session_id) is the practical duplicate-prevention
 -- rule the spec asks for: a student can only have one attendance record
--- per real class session. SQLite treats NULLs as distinct for UNIQUE
+-- per real class session. PostgreSQL treats NULLs as distinct for UNIQUE
 -- purposes, so this doesn't (and isn't meant to) constrain
 -- session-less records — there is no write path that creates those in
 -- this phase (no trainer marking UI exists yet — explicitly out of
@@ -309,18 +314,18 @@ CREATE TABLE IF NOT EXISTS attendance_records (
   batch_id          TEXT NOT NULL,
   class_session_id  TEXT REFERENCES class_sessions (id) ON DELETE SET NULL,
   status            TEXT NOT NULL,
-  marked_at         TEXT NOT NULL DEFAULT (datetime('now')),
-  created_at        TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at        TEXT NOT NULL DEFAULT (datetime('now')),
+  marked_at         TEXT NOT NULL DEFAULT app_now(),
+  created_at        TEXT NOT NULL DEFAULT app_now(),
+  updated_at        TEXT NOT NULL DEFAULT app_now(),
   UNIQUE (student_id, class_session_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_attendance_records_student_id ON attendance_records (student_id);
 
--- Minimal certificate record. `course_slug` is the same non-FK catalog
+-- Minimal certificate record. \`course_slug\` is the same non-FK catalog
 -- reference used throughout (matches src/data/courses.js).
--- `certificate_number` is UNIQUE — a human-shareable, verifiable
--- identifier distinct from the internal `id`.
+-- \`certificate_number\` is UNIQUE — a human-shareable, verifiable
+-- identifier distinct from the internal \`id\`.
 --
 -- Nothing in this application ever inserts a row here automatically —
 -- Phase 8.4's course-completion check explicitly stops short of issuing a
@@ -330,14 +335,22 @@ CREATE INDEX IF NOT EXISTS idx_attendance_records_student_id ON attendance_recor
 -- This table is expected to be empty in practice; createCertificate()
 -- below is only a tested foundation for that future phase.
 CREATE TABLE IF NOT EXISTS certificates (
+  enrollment_id TEXT,
+  verification_token TEXT,
+  issued_by TEXT REFERENCES users (id) ON DELETE SET NULL,
+  issuance_basis TEXT,
+  approval_note TEXT,
+  revoked_at TEXT,
+  revoked_reason TEXT,
+  revoked_by TEXT REFERENCES users (id) ON DELETE SET NULL,
   id                  TEXT PRIMARY KEY,
   student_id          TEXT NOT NULL REFERENCES student_profiles (id) ON DELETE CASCADE,
   course_slug         TEXT NOT NULL,
   certificate_number  TEXT NOT NULL UNIQUE,
-  issued_at           TEXT NOT NULL DEFAULT (datetime('now')),
+  issued_at           TEXT NOT NULL DEFAULT app_now(),
   status              TEXT NOT NULL DEFAULT 'ACTIVE',
-  created_at          TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at          TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at          TEXT NOT NULL DEFAULT app_now(),
+  updated_at          TEXT NOT NULL DEFAULT app_now()
 );
 
 CREATE INDEX IF NOT EXISTS idx_certificates_student_id ON certificates (student_id);
@@ -345,7 +358,7 @@ CREATE INDEX IF NOT EXISTS idx_certificates_student_id ON certificates (student_
 -- --------------------------------------------------------------------------
 -- Notifications (Phase 8.8)
 --
--- `user_id` references `users` directly (not `student_profiles`) because
+-- \`user_id\` references \`users\` directly (not \`student_profiles\`) because
 -- notifications are a user-level concern that could reach any role in a
 -- later phase, not something inherently student-only — the student UI
 -- just happens to be the only reader of them right now.
@@ -357,13 +370,16 @@ CREATE INDEX IF NOT EXISTS idx_certificates_student_id ON certificates (student_
 -- real automated trigger) to build on.
 -- --------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS notifications (
+  seq BIGINT GENERATED ALWAYS AS IDENTITY,
+  link TEXT,
+  event_key TEXT,
   id          TEXT PRIMARY KEY,
   user_id     TEXT NOT NULL REFERENCES users (id) ON DELETE CASCADE,
   title       TEXT NOT NULL,
   message     TEXT NOT NULL,
   type        TEXT NOT NULL DEFAULT 'GENERAL',
   read_at     TEXT,
-  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at  TEXT NOT NULL DEFAULT app_now()
 );
 
 CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications (user_id);
@@ -377,10 +393,10 @@ CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications (user_id);
 -- create the smallest clean solution" this is a new, minimal join table —
 -- not a duplicate of course/batch/enrollment data.
 --
--- `trainer_user_id` references `users` directly (a trainer has no
+-- \`trainer_user_id\` references \`users\` directly (a trainer has no
 -- separate profile table the way a student does — there was no existing
--- `trainer_profiles` table to hang this off of, and nothing in this phase
--- needs one). `batch_id` follows the same non-FK catalog-reference
+-- \`trainer_profiles\` table to hang this off of, and nothing in this phase
+-- needs one). \`batch_id\` follows the same non-FK catalog-reference
 -- strategy as the rest of this schema (matches src/data/batches.js) — it
 -- is not a SQL foreign key because batches are file-based, not a native
 -- DB table; validity is checked in the application layer.
@@ -401,7 +417,7 @@ CREATE TABLE IF NOT EXISTS trainer_batch_assignments (
   id                TEXT PRIMARY KEY,
   trainer_user_id   TEXT NOT NULL REFERENCES users (id) ON DELETE CASCADE,
   batch_id          TEXT NOT NULL,
-  created_at        TEXT NOT NULL DEFAULT (datetime('now')),
+  created_at        TEXT NOT NULL DEFAULT app_now(),
   UNIQUE (trainer_user_id, batch_id)
 );
 
@@ -411,14 +427,14 @@ CREATE INDEX IF NOT EXISTS idx_trainer_batch_assignments_batch_id ON trainer_bat
 -- --------------------------------------------------------------------------
 -- CRM leads + internal notes (Phase 10.2)
 --
--- ONE table for every public enquiry (`source` distinguishes the Book Demo
--- form from the Enquiry form; `origin` is the page tag the form already
+-- ONE table for every public enquiry (\`source\` distinguishes the Book Demo
+-- form from the Enquiry form; \`origin\` is the page tag the form already
 -- carries). No UNIQUE on phone/email: the same person may legitimately
 -- enquire more than once — accidental double-submits are collapsed at the
--- service layer instead (src/lib/crm/submit.js). `course_slug` / `mode` /
--- `batch_id` follow this schema's non-FK catalog-reference convention
+-- service layer instead (src/lib/crm/submit.js). \`course_slug\` / \`mode\` /
+-- \`batch_id\` follow this schema's non-FK catalog-reference convention
 -- (src/data/*) and are validated against the live catalog on write.
--- `status` and `source` are validated in code against src/constants/crm.js;
+-- \`status\` and \`source\` are validated in code against src/constants/crm.js;
 -- the browser can never choose a status. Both tables are new, so existing
 -- databases pick them up via CREATE TABLE IF NOT EXISTS with no data
 -- touched. lead_notes are internal staff notes and are never shown outside
@@ -441,8 +457,8 @@ CREATE TABLE IF NOT EXISTS leads (
   consent            INTEGER NOT NULL DEFAULT 0,
   status             TEXT NOT NULL DEFAULT 'NEW',
   assigned_to        TEXT REFERENCES users (id) ON DELETE SET NULL,
-  created_at         TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at         TEXT NOT NULL DEFAULT (datetime('now')),
+  created_at         TEXT NOT NULL DEFAULT app_now(),
+  updated_at         TEXT NOT NULL DEFAULT app_now(),
   last_contacted_at  TEXT,
   -- Phase 10.3: set when the lead is converted to a student account. Existing
   -- databases get these via the guarded migration in src/lib/db/client.js.
@@ -455,11 +471,12 @@ CREATE INDEX IF NOT EXISTS idx_leads_assigned_to ON leads (assigned_to);
 CREATE INDEX IF NOT EXISTS idx_leads_created_at ON leads (created_at);
 
 CREATE TABLE IF NOT EXISTS lead_notes (
+  seq BIGINT GENERATED ALWAYS AS IDENTITY,
   id              TEXT PRIMARY KEY,
   lead_id         TEXT NOT NULL REFERENCES leads (id) ON DELETE CASCADE,
   author_user_id  TEXT REFERENCES users (id) ON DELETE SET NULL,
   note            TEXT NOT NULL,
-  created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at      TEXT NOT NULL DEFAULT app_now()
 );
 
 CREATE INDEX IF NOT EXISTS idx_lead_notes_lead_id ON lead_notes (lead_id);
@@ -479,7 +496,7 @@ CREATE INDEX IF NOT EXISTS idx_lead_notes_lead_id ON lead_notes (lead_id);
 --
 -- payments: append-only history. A mistaken entry is VOIDED (with reason and
 -- actor) rather than deleted. Only RECORDED (manual, staff-entered) and
--- VERIFIED (gateway-confirmed) rows count toward "paid". `source` makes a
+-- VERIFIED (gateway-confirmed) rows count toward "paid". \`source\` makes a
 -- manual entry distinguishable from a gateway-verified one. receipt_token is
 -- the unguessable identifier used in receipt URLs; receipt_number is the
 -- human-readable number. UNIQUE(provider, provider_reference) and
@@ -498,14 +515,14 @@ CREATE TABLE IF NOT EXISTS fee_plans (
   course_slug       TEXT NOT NULL,
   batch_id          TEXT NOT NULL,
   currency          TEXT NOT NULL,
-  total_minor       INTEGER NOT NULL CHECK (total_minor >= 0),
-  discount_minor    INTEGER NOT NULL DEFAULT 0 CHECK (discount_minor >= 0),
+  total_minor       BIGINT NOT NULL CHECK (total_minor >= 0),
+  discount_minor    BIGINT NOT NULL DEFAULT 0 CHECK (discount_minor >= 0),
   due_date          TEXT,
   status            TEXT NOT NULL DEFAULT 'ACTIVE',
   note              TEXT,
   created_by        TEXT REFERENCES users (id) ON DELETE SET NULL,
-  created_at        TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at        TEXT NOT NULL DEFAULT (datetime('now')),
+  created_at        TEXT NOT NULL DEFAULT app_now(),
+  updated_at        TEXT NOT NULL DEFAULT app_now(),
   CHECK (discount_minor <= total_minor)
 );
 
@@ -513,9 +530,10 @@ CREATE INDEX IF NOT EXISTS idx_fee_plans_student_user_id ON fee_plans (student_u
 CREATE INDEX IF NOT EXISTS idx_fee_plans_course_slug ON fee_plans (course_slug);
 
 CREATE TABLE IF NOT EXISTS payments (
+  seq BIGINT GENERATED ALWAYS AS IDENTITY,
   id                  TEXT PRIMARY KEY,
   fee_plan_id         TEXT NOT NULL REFERENCES fee_plans (id) ON DELETE RESTRICT,
-  amount_minor        INTEGER NOT NULL CHECK (amount_minor > 0),
+  amount_minor        BIGINT NOT NULL CHECK (amount_minor > 0),
   currency            TEXT NOT NULL,
   source              TEXT NOT NULL,
   method              TEXT NOT NULL,
@@ -532,7 +550,7 @@ CREATE TABLE IF NOT EXISTS payments (
   voided_by           TEXT REFERENCES users (id) ON DELETE SET NULL,
   receipt_number      TEXT NOT NULL UNIQUE,
   receipt_token       TEXT NOT NULL UNIQUE,
-  created_at          TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at          TEXT NOT NULL DEFAULT app_now()
 );
 
 CREATE INDEX IF NOT EXISTS idx_payments_fee_plan_id ON payments (fee_plan_id);
@@ -543,24 +561,25 @@ CREATE TABLE IF NOT EXISTS payment_provider_events (
   id           TEXT PRIMARY KEY,
   provider     TEXT NOT NULL,
   event_id     TEXT NOT NULL,
-  received_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  received_at  TEXT NOT NULL DEFAULT app_now(),
   outcome      TEXT,
   UNIQUE (provider, event_id)
 );
 
 CREATE TABLE IF NOT EXISTS audit_log (
+  seq BIGINT GENERATED ALWAYS AS IDENTITY,
   id             TEXT PRIMARY KEY,
   actor_user_id  TEXT REFERENCES users (id) ON DELETE SET NULL,
   action         TEXT NOT NULL,
   entity_type    TEXT NOT NULL,
   entity_id      TEXT NOT NULL,
   detail         TEXT,
-  created_at     TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at     TEXT NOT NULL DEFAULT app_now()
 );
 
 CREATE INDEX IF NOT EXISTS idx_audit_log_entity ON audit_log (entity_type, entity_id);
 
--- Phase 10.5 note: the `certificates` table above is extended (additively)
+-- Phase 10.5 note: the \`certificates\` table above is extended (additively)
 -- by migrate() in src/lib/db/client.js with: enrollment_id,
 -- verification_token (unguessable public identifier; UNIQUE index),
 -- issued_by, issuance_basis ('AUTO_COMPLETE' | 'MANUAL_APPROVAL'),
@@ -577,8 +596,8 @@ CREATE INDEX IF NOT EXISTS idx_audit_log_entity ON audit_log (entity_type, entit
 --
 -- job_applications: one per (job, student) (UNIQUE) — a withdrawn
 -- application can't be re-submitted; staff can reopen by other means later.
--- `status` is the pipeline state and only staff can advance it (students may
--- only withdraw their own). `staff_notes` is internal and never read by any
+-- \`status\` is the pipeline state and only staff can advance it (students may
+-- only withdraw their own). \`staff_notes\` is internal and never read by any
 -- student-facing query. A placement is only *verified* when a placement
 -- manager explicitly confirms it (placement_confirmed_at), and only for a
 -- SELECTED application — SELECTED alone is not a placement claim. There is
@@ -599,8 +618,8 @@ CREATE TABLE IF NOT EXISTS jobs (
   status           TEXT NOT NULL DEFAULT 'DRAFT',
   created_by       TEXT REFERENCES users (id) ON DELETE SET NULL,
   published_at     TEXT,
-  created_at       TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at       TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at       TEXT NOT NULL DEFAULT app_now(),
+  updated_at       TEXT NOT NULL DEFAULT app_now()
 );
 
 CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs (status);
@@ -615,8 +634,8 @@ CREATE TABLE IF NOT EXISTS job_applications (
   placement_confirmed_at   TEXT,
   placement_confirmed_by   TEXT REFERENCES users (id) ON DELETE SET NULL,
   placement_note           TEXT,
-  applied_at               TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at               TEXT NOT NULL DEFAULT (datetime('now')),
+  applied_at               TEXT NOT NULL DEFAULT app_now(),
+  updated_at               TEXT NOT NULL DEFAULT app_now(),
   UNIQUE (job_id, student_user_id)
 );
 
@@ -626,14 +645,14 @@ CREATE INDEX IF NOT EXISTS idx_job_applications_status ON job_applications (stat
 -- --------------------------------------------------------------------------
 -- Rate limiting (production-readiness hardening)
 --
--- One row per limiter key and fixed window. Stored in the same SQLite file as
+-- One row per limiter key and fixed window. Stored in the same database as
 -- everything else, so every server process using this database shares the
--- counters (unlike per-process memory). It does NOT span multiple hosts that
--- each have their own database file — see README.
+-- counters (unlike per-process memory), including serverless instances.
 -- --------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS rate_limits (
+  allowed BOOLEAN NOT NULL DEFAULT TRUE,
   key           TEXT PRIMARY KEY,
-  window_start  INTEGER NOT NULL,
+  window_start  BIGINT NOT NULL,
   count         INTEGER NOT NULL
 );
 
@@ -642,8 +661,8 @@ CREATE INDEX IF NOT EXISTS idx_rate_limits_window_start ON rate_limits (window_s
 -- --------------------------------------------------------------------------
 -- Notification delivery outbox (Phase 10.7)
 --
--- The in-app notification itself lives in `notifications` (extended
--- additively with `link` and `event_key` by migrate() in
+-- The in-app notification itself lives in \`notifications\` (extended
+-- additively with \`link\` and \`event_key\` by migrate() in
 -- src/lib/db/client.js; UNIQUE(user_id, event_key) makes a retried business
 -- event create at most one notification). This table records the external
 -- channel attempt for a notification, one row per (notification, channel):
@@ -656,6 +675,7 @@ CREATE INDEX IF NOT EXISTS idx_rate_limits_window_start ON rate_limits (window_s
 --            configured, invalid recipient, inactive user, …)
 -- --------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS notification_deliveries (
+  seq BIGINT GENERATED ALWAYS AS IDENTITY,
   id                   TEXT PRIMARY KEY,
   notification_id      TEXT NOT NULL REFERENCES notifications (id) ON DELETE CASCADE,
   channel              TEXT NOT NULL,
@@ -664,9 +684,9 @@ CREATE TABLE IF NOT EXISTS notification_deliveries (
   max_attempts         INTEGER NOT NULL DEFAULT 3,
   last_error           TEXT,
   provider_message_id  TEXT,
-  next_attempt_at      TEXT NOT NULL DEFAULT (datetime('now')),
-  created_at           TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at           TEXT NOT NULL DEFAULT (datetime('now')),
+  next_attempt_at      TEXT NOT NULL DEFAULT app_now(),
+  created_at           TEXT NOT NULL DEFAULT app_now(),
+  updated_at           TEXT NOT NULL DEFAULT app_now(),
   UNIQUE (notification_id, channel)
 );
 
@@ -689,6 +709,7 @@ CREATE INDEX IF NOT EXISTS idx_job_applications_applied_at ON job_applications (
 -- daily cap and operational visibility, and cascade away with the user.
 -- --------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS ai_usage (
+  seq BIGINT GENERATED ALWAYS AS IDENTITY,
   id             TEXT PRIMARY KEY,
   user_id        TEXT NOT NULL REFERENCES users (id) ON DELETE CASCADE,
   feature        TEXT NOT NULL,
@@ -697,7 +718,7 @@ CREATE TABLE IF NOT EXISTS ai_usage (
   output_chars   INTEGER NOT NULL DEFAULT 0,
   input_tokens   INTEGER,
   output_tokens  INTEGER,
-  created_at     TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at     TEXT NOT NULL DEFAULT app_now()
 );
 
 CREATE INDEX IF NOT EXISTS idx_ai_usage_user_day ON ai_usage (user_id, created_at);
@@ -730,9 +751,9 @@ CREATE TABLE IF NOT EXISTS catalog_courses (
   prerequisites      TEXT,
   outcomes           TEXT,
   created_by         TEXT REFERENCES users (id) ON DELETE SET NULL,
-  created_at         TEXT NOT NULL DEFAULT (datetime('now')),
+  created_at         TEXT NOT NULL DEFAULT app_now(),
   updated_by         TEXT REFERENCES users (id) ON DELETE SET NULL,
-  updated_at         TEXT NOT NULL DEFAULT (datetime('now'))
+  updated_at         TEXT NOT NULL DEFAULT app_now()
 );
 
 CREATE TABLE IF NOT EXISTS catalog_batches (
@@ -746,9 +767,16 @@ CREATE TABLE IF NOT EXISTS catalog_batches (
   status      TEXT,
   location    TEXT,
   created_by  TEXT REFERENCES users (id) ON DELETE SET NULL,
-  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  created_at  TEXT NOT NULL DEFAULT app_now(),
   updated_by  TEXT REFERENCES users (id) ON DELETE SET NULL,
-  updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+  updated_at  TEXT NOT NULL DEFAULT app_now()
 );
 
 CREATE INDEX IF NOT EXISTS idx_catalog_batches_course ON catalog_batches (course_slug);
+
+-- Indexes added by later phases.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_notifications_event_key ON notifications (user_id, event_key) WHERE event_key IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_certificates_verification_token ON certificates (verification_token) WHERE verification_token IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_certificates_enrollment_id ON certificates (enrollment_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_certificates_one_active ON certificates (student_id, course_slug) WHERE status = 'ACTIVE';
+`;

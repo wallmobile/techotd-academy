@@ -26,12 +26,12 @@ export async function getJobFit(jobId) {
   const required = parseSkillList(detail.job.skills);
   if (required.length === 0) return { hasSkills: false, caveat: JOB_FIT_CAVEAT };
 
-  const enrolledSlugs = listCourseEnrollmentsForStudent(student.profile.id)
+  const enrolledSlugs = (await listCourseEnrollmentsForStudent(student.profile.id))
     .filter((e) => e.status === "ACTIVE" || e.status === "COMPLETED")
     .map((e) => e.courseSlug);
   const known = new Map();
   for (const slug of enrolledSlugs) {
-    const course = getCourse(slug);
+    const course = await getCourse(slug);
     for (const tech of course?.technologies || []) known.set(skillKey(tech), { skill: tech, course: course.title });
   }
 
@@ -45,7 +45,7 @@ export async function getJobFit(jobId) {
 
   // Catalog courses (not already enrolled) that teach at least one missing skill.
   const missingKeys = new Set(missing.map(skillKey));
-  const suggestedCourses = listCourses({ publishedOnly: true })
+  const suggestedCourses = (await listCourses({ publishedOnly: true }))
     .filter((c) => !enrolledSlugs.includes(c.slug))
     .map((c) => ({
       slug: c.slug,

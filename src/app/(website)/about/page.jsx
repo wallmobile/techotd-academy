@@ -112,7 +112,7 @@ function PillarCard() {
   );
 }
 
-export default function AboutPage() {
+export default async function AboutPage() {
   const mapsHref = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(contact.address)}`;
 
   return (
@@ -124,7 +124,7 @@ export default function AboutPage() {
         description="TechOTD Academy is a career-focused training institute in Noida offering practical, industry-ready programs guided by expert mentors — in live online, classroom and hybrid formats."
         aside={<PillarCard />}
         stats={[
-          { value: listCourses({ publishedOnly: true }).length, label: "Courses" },
+          { value: (await listCourses({ publishedOnly: true })).length, label: "Courses" },
           { value: trainers.length, label: "Mentors" },
           { value: trainingModes.length, label: "Training modes" },
         ]}

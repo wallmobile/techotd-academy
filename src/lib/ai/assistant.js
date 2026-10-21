@@ -59,8 +59,8 @@ export async function askAssistant({ question, courseSlug }, { generate = genera
   if (typeof courseSlug === "string" && courseSlug) {
     // Only a course the student is enrolled in — otherwise treated as invalid
     // without revealing whether the slug exists.
-    if (!enrolledCourseSlugs(student.profile.id).includes(courseSlug)) return { ok: false, reason: "course_not_enrolled" };
-    course = getCourse(courseSlug);
+    if (!(await enrolledCourseSlugs(student.profile.id)).includes(courseSlug)) return { ok: false, reason: "course_not_enrolled" };
+    course = await getCourse(courseSlug);
     if (!course) return { ok: false, reason: "course_not_enrolled" };
   }
 

@@ -34,7 +34,7 @@ const JSON_LD_LT = String.fromCharCode(92) + "u003c";
 export async function generateMetadata({ params }) {
   const { "course-slug": slug } = await params;
   // Unpublished courses are not exposed on public routes.
-  const course = getCourse(slug, { publishedOnly: true });
+  const course = await getCourse(slug, { publishedOnly: true });
 
   if (!course) {
     return { title: "Course Not Found" };
@@ -58,13 +58,13 @@ export async function generateMetadata({ params }) {
 
 export default async function CourseDetailPage({ params }) {
   const { "course-slug": slug } = await params;
-  const course = getCourse(slug, { publishedOnly: true });
+  const course = await getCourse(slug, { publishedOnly: true });
 
   if (!course) {
     notFound();
   }
 
-  const related = getRelatedCourses(course);
+  const related = await getRelatedCourses(course);
 
   const structuredData = {
     "@context": "https://schema.org",

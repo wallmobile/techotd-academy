@@ -6,21 +6,21 @@
 import { getUserForEnrollment, listEnrollmentsForUser } from "@/lib/db/enrollments";
 import { getBatch, getCourse } from "@/lib/catalog";
 
-export function getEnrollmentsForConvertedStudent(userId) {
-  const user = getUserForEnrollment(userId);
+export async function getEnrollmentsForConvertedStudent(userId) {
+  const user = await getUserForEnrollment(userId);
   if (!user) return null;
   return {
     id: user.id,
     name: user.name,
     email: user.email,
-    enrollments: listEnrollmentsForUser(userId).map((e) => {
-      const batch = getBatch(e.batchId);
+    enrollments: await Promise.all((await listEnrollmentsForUser(userId)).map(async (e) => {
+      const batch = await getBatch(e.batchId);
       return {
         id: e.id,
         status: e.status,
-        courseTitle: batch ? getCourse(batch.courseSlug)?.title ?? batch.courseSlug : "Unknown course",
+        courseTitle: batch ? (await getCourse(batch.courseSlug))?.title ?? batch.courseSlug : "Unknown course",
         batchLabel: batch ? `${batch.mode} — ${batch.startDate}` : e.batchId,
       };
-    }),
+    })),
   };
 }

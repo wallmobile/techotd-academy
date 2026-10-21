@@ -100,8 +100,8 @@ function MarqueeRow({ row, reverse }) {
   );
 }
 
-export function HiringPartners() {
-  const courses = listCourses({ publishedOnly: true });
+export async function HiringPartners() {
+  const courses = await listCourses({ publishedOnly: true });
   const technologies = [...new Set(courses.flatMap((course) => course.technologies))];
   const items = technologies.map((name) => ({ name, category: CATEGORY_OF[name] ?? "other" }));
   const usedCategories = Object.keys(CATEGORIES).filter((key) => items.some((item) => item.category === key));

@@ -1,6 +1,6 @@
 // Client-safe role display/policy constants. Lives outside src/lib/auth so a
 // "use client" component can import it without pulling the database layer
-// (better-sqlite3, via src/lib/db/users.js) into the browser bundle.
+// (and the database driver, via src/lib/db/users.js) into the browser bundle.
 // src/lib/auth/roles.js re-exports these for server code.
 
 export const ROLE_LABELS = {

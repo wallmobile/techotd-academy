@@ -42,9 +42,9 @@ export async function updateProfileAction(_prevState, formData) {
     return { status: "error", errors, values };
   }
 
-  updateUserName(user.id, values.name);
-  const profile = getOrCreateStudentProfile(user.id);
-  updateStudentProfileFields(profile.id, {
+  await updateUserName(user.id, values.name);
+  const profile = await getOrCreateStudentProfile(user.id);
+  await updateStudentProfileFields(profile.id, {
     phone: values.phone.trim(),
     city: values.city.trim(),
     avatarUrl: profile.avatarUrl,
@@ -79,7 +79,7 @@ export async function changePasswordAction(_prevState, formData) {
     return { status: "error", errors };
   }
 
-  const internalUser = findUserByIdInternal(user.id);
+  const internalUser = await findUserByIdInternal(user.id);
   const currentPasswordMatches = await verifyPassword(values.currentPassword, internalUser.passwordHash);
   if (!currentPasswordMatches) {
     return {
@@ -89,14 +89,14 @@ export async function changePasswordAction(_prevState, formData) {
   }
 
   const passwordHash = await hashPassword(values.password);
-  updateUserPasswordHash(user.id, passwordHash);
+  await updateUserPasswordHash(user.id, passwordHash);
 
   // Read before deleting — otherwise the session row this decision depends
   // on is already gone. Carries the browser's original "remember me" choice
   // into the fresh session, instead of always silently downgrading a
   // persistent login to a browser-session cookie.
   const remember = await isCurrentSessionRemembered();
-  deleteAllSessionsForUser(user.id);
+  await deleteAllSessionsForUser(user.id);
   await startSession(user.id, { remember });
 
   return {

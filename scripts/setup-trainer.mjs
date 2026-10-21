@@ -123,7 +123,7 @@ async function main() {
     srcUrl("src/lib/db/trainerBatchAssignments.js")
   );
 
-  const existing = findUserByEmailInternal(email);
+  const existing = await findUserByEmailInternal(email);
   let trainer;
   let generatedPassword = null;
 
@@ -140,13 +140,13 @@ async function main() {
     const password = suppliedPassword || generatePassword();
     if (!suppliedPassword) generatedPassword = password;
     const passwordHash = await hashPassword(password);
-    trainer = createUser({ name, email, phone: null, passwordHash, role: "TRAINER" });
+    trainer = await createUser({ name, email, phone: null, passwordHash, role: "TRAINER" });
     console.log(`Created TRAINER account: ${trainer.email} (id: ${trainer.id})`);
   }
 
   if (batchId) {
-    const alreadyAssigned = isBatchAssignedToTrainer(trainer.id, batchId);
-    createTrainerBatchAssignment(trainer.id, batchId);
+    const alreadyAssigned = await isBatchAssignedToTrainer(trainer.id, batchId);
+    await createTrainerBatchAssignment(trainer.id, batchId);
     console.log(
       alreadyAssigned
         ? `Batch "${batchId}" was already assigned to ${trainer.email} — nothing changed.`
@@ -168,7 +168,12 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error("setup:trainer failed:", error);
-  process.exit(1);
-});
+main()
+  .then(async () => {
+    const { closeDb } = await import(srcUrl("src/lib/db/client.js"));
+    await closeDb();
+  })
+  .catch((error) => {
+    console.error("setup:trainer failed:", error);
+    process.exit(1);
+  });

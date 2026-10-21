@@ -49,7 +49,7 @@ function CheckIcon() {
  * column on the left and the form (children) in a floating booking card on
  * the right. The form itself stays in EnquiryForm.
  */
-export function EnquiryShell({ variant, children }) {
+export async function EnquiryShell({ variant, children }) {
   const content = copy[variant];
   const [before, accent, after] = content.title;
   const words = [
@@ -57,8 +57,8 @@ export function EnquiryShell({ variant, children }) {
     ...accent.split(" ").map((text) => ({ text, accent: true })),
     ...after.split(" ").map((text) => ({ text })),
   ];
-  const nextBatch = content.showNextBatch ? listBatches({ publicOnly: true })[0] ?? null : null;
-  const nextCourse = nextBatch ? getCourse(nextBatch.courseSlug) : null;
+  const nextBatch = content.showNextBatch ? (await listBatches({ publicOnly: true }))[0] ?? null : null;
+  const nextCourse = nextBatch ? await getCourse(nextBatch.courseSlug) : null;
 
   return (
     <section className="relative isolate overflow-hidden bg-surface">

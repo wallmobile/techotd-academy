@@ -11,12 +11,12 @@ export async function getMyFeed({ page = 1 } = {}) {
   const user = await getCurrentUser();
   const empty = { notifications: [], unreadCount: 0, page: 1, totalPages: 1, total: 0, pageSize: FEED_PAGE_SIZE };
   if (!user) return empty;
-  const total = countNotificationsForUser(user.id);
+  const total = await countNotificationsForUser(user.id);
   const totalPages = Math.max(1, Math.ceil(total / FEED_PAGE_SIZE));
   const current = Math.min(Math.max(1, Number(page) || 1), totalPages);
   return {
-    notifications: listNotificationsForUser(user.id, { limit: FEED_PAGE_SIZE, offset: (current - 1) * FEED_PAGE_SIZE }),
-    unreadCount: countUnreadForUser(user.id),
+    notifications: await listNotificationsForUser(user.id, { limit: FEED_PAGE_SIZE, offset: (current - 1) * FEED_PAGE_SIZE }),
+    unreadCount: await countUnreadForUser(user.id),
     page: current,
     totalPages,
     total,

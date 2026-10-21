@@ -20,7 +20,7 @@ export default async function StudentNotificationsPage() {
     <StudentShell user={user} title="Notifications">
       <div className="flex flex-col gap-6">
         <p className="text-sm text-muted">Updates about your courses, batches and assignments.</p>
-        <EmailPreferenceForm enabled={getEmailNotificationsEnabled(user.id)} />
+        <EmailPreferenceForm enabled={await getEmailNotificationsEnabled(user.id)} />
 
         {notifications.length === 0 ? (
           <EmptyState

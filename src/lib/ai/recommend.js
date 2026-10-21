@@ -63,9 +63,9 @@ function publicCourse(course) {
   };
 }
 
-export function catalogRecommendations({ interests, excludeSlugs = [] }) {
+export async function catalogRecommendations({ interests, excludeSlugs = [] }) {
   const tokens = tokenizeInterests(interests);
-  const scored = listCourses({ publishedOnly: true })
+  const scored = (await listCourses({ publishedOnly: true }))
     .filter((c) => !excludeSlugs.includes(c.slug))
     .map((c) => ({ course: c, ...scoreCourse(c, tokens) }))
     .filter((x) => x.score > 0)
@@ -118,8 +118,8 @@ export async function recommendCourses({ interests }, { generate = generateText 
   const text = typeof interests === "string" ? interests.trim() : "";
   if (text.length < 3 || text.length > INTERESTS_MAX) return { ok: false, reason: "interests_invalid" };
 
-  const enrolled = enrolledCourseSlugs(student.profile.id);
-  const { scored } = catalogRecommendations({ interests: text, excludeSlugs: enrolled });
+  const enrolled = await enrolledCourseSlugs(student.profile.id);
+  const { scored } = await catalogRecommendations({ interests: text, excludeSlugs: enrolled });
   const fallback = () =>
     scored.slice(0, MAX_PICKS).map(({ course, reasons }) => ({
       ...publicCourse(course),
@@ -144,7 +144,7 @@ export async function recommendCourses({ interests }, { generate = generateText 
           source: "ai",
           aiAvailable,
           note: null,
-          picks: picks.map((p) => ({ ...publicCourse(getCourse(p.slug, { publishedOnly: true })), reason: p.reason || "Suggested for your interests." })),
+          picks: await Promise.all(picks.map(async (p) => ({ ...publicCourse(await getCourse(p.slug, { publishedOnly: true })), reason: p.reason || "Suggested for your interests." }))),
         };
       }
     }

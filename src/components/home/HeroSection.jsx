@@ -7,8 +7,8 @@ import { listCourses } from "@/lib/catalog";
 import { categories } from "@/data/categories";
 
 // Trust strip — every figure is derived from the real (published) catalog, never invented.
-function getStats() {
-  const courses = listCourses({ publishedOnly: true });
+async function getStats() {
+  const courses = await listCourses({ publishedOnly: true });
   const projectCount = courses.reduce((sum, course) => sum + (course.projects?.length ?? 0), 0);
   return [
     { value: courses.length, label: "Courses" },
@@ -68,8 +68,8 @@ const gridStyle = {
   WebkitMaskImage: "linear-gradient(to bottom, black 0%, black 55%, transparent 100%)",
 };
 
-export function HeroSection() {
-  const stats = getStats();
+export async function HeroSection() {
+  const stats = await getStats();
   return (
     <div className="relative isolate overflow-hidden bg-gradient-to-b from-surface via-white to-white">
       {/* Decorative background: fading grid lines + soft colour glows. */}

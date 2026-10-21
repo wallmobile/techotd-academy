@@ -3,26 +3,26 @@
   "version": "0.1.0",
   "private": true,
   "engines": {
-    "node": ">=22"
+    "node": ">=22.9"
   },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "setup:trainer": "node scripts/setup-trainer.mjs",
-    "setup:admin": "node scripts/setup-admin.mjs",
-    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./tests/register.mjs --test \"tests/**/*.test.mjs\"",
+    "setup:trainer": "node --env-file-if-exists=.env.local scripts/setup-trainer.mjs",
+    "setup:admin": "node --env-file-if-exists=.env.local scripts/setup-admin.mjs",
+    "test": "node scripts/run-with-pg.mjs node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./tests/register.mjs --test --test-timeout=180000 \"tests/**/*.test.mjs\"",
     "test:e2e": "node --test --test-concurrency=1 --test-timeout=120000 \"e2e/*.e2e.mjs\"",
-    "backup": "node scripts/backup-db.mjs",
+    "backup": "node --env-file-if-exists=.env.local scripts/backup-db.mjs",
     "backup:verify": "node scripts/verify-backup.mjs"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
-    "better-sqlite3": "^13.0.3",
     "clsx": "^2.1.1",
     "framer-motion": "^13.4.3",
     "next": "16.3.8",
+    "pg": "^8.23.1",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "tailwind-merge": "^3.7.0"

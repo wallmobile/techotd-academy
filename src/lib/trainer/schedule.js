@@ -21,8 +21,8 @@ export async function getMySchedule() {
   const ctx = await getTrainerContext();
   if (!ctx) return { upcoming: [], past: [], nextSession: null };
 
-  const assignedBatches = enrichAssignedBatches(ctx.batchIds);
-  const sessions = listSessionsForBatchIds(ctx.batchIds).map((s) => enrichSession(s, assignedBatches));
+  const assignedBatches = await enrichAssignedBatches(ctx.batchIds);
+  const sessions = (await listSessionsForBatchIds(ctx.batchIds)).map((s) => enrichSession(s, assignedBatches));
 
   const now = new Date();
   const upcoming = sessions

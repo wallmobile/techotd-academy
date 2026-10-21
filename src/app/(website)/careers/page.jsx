@@ -104,8 +104,8 @@ function CareerAside() {
   );
 }
 
-export default function CareersPage() {
-  const courses = listCourses({ publishedOnly: true });
+export default async function CareersPage() {
+  const courses = await listCourses({ publishedOnly: true });
   const plans = courses.map((course) => ({
     slug: course.slug,
     title: course.title,

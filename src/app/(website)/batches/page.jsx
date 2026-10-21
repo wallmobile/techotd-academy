@@ -7,6 +7,6 @@ export const metadata = {
     "Browse upcoming learning batches across TechOTD Academy courses and find a schedule that fits you.",
 };
 
-export default function BatchesPage() {
-  return <BatchExplorer batches={listBatches({ publicOnly: true })} courses={listCourses({ publishedOnly: true }).map((c) => ({ slug: c.slug, title: c.title, category: c.category, levelLabel: c.levelLabel, duration: c.duration }))} />;
+export default async function BatchesPage() {
+  return <BatchExplorer batches={await listBatches({ publicOnly: true })} courses={(await listCourses({ publishedOnly: true })).map((c) => ({ slug: c.slug, title: c.title, category: c.category, levelLabel: c.levelLabel, duration: c.duration }))} />;
 }

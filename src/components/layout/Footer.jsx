@@ -98,8 +98,8 @@ const socialLinks = [
   },
 ];
 
-export function Footer() {
-  const courses = listCourses({ publishedOnly: true });
+export async function Footer() {
+  const courses = await listCourses({ publishedOnly: true });
   const year = new Date().getFullYear();
 
   return (
