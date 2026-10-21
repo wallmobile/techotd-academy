@@ -92,14 +92,16 @@ Notes specific to Vercel:
 
 ### 5.1 Local development
 
-You need a PostgreSQL server. Options: install PostgreSQL locally, or create a free hosted
-database and use its URL. Then:
+You need a PostgreSQL server. Easiest: with PostgreSQL installed on the machine,
 
 ```bash
-cp .env.example .env.local        # set DATABASE_URL (a LOCAL or throw-away database)
 npm ci
+npm run db:start                 # project-local dev database; writes DATABASE_URL to .env.local
+npm run db:import-sqlite         # optional: copy the old SQLite data/app.db into it
 npm run dev
 ```
+
+Or create any PostgreSQL database (local or a free hosted one) and put its URL in `.env.local`.
 
 Use a database you do not mind losing. **Never point development at the production database.**
 

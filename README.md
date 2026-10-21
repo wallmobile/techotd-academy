@@ -58,7 +58,14 @@ Never commit `.env` or `.env.local`.
 
 ## Database Setup
 
-Create an empty database (`createdb techotd_dev`) and point `DATABASE_URL` at it. There is no
+**Quickest (local development):** `npm run db:start` creates a development PostgreSQL inside the
+project (`data/pg`, git-ignored, 127.0.0.1:54329, uses the PostgreSQL binaries already installed on
+the machine), creates the `techotd_dev` database and adds its `DATABASE_URL` to `.env.local`.
+Stop it with `npm run db:stop`; start it again with `npm run db:start` after a reboot.
+Coming from the old SQLite version? `npm run db:import-sqlite` copies `data/app.db` into the
+(empty) PostgreSQL database — read-only on the SQLite side, all-or-nothing, sessions not copied.
+
+Otherwise create an empty database (`createdb techotd_dev`) and point `DATABASE_URL` at it. There is no
 separate init command: every table is created automatically — deterministically, from
 `src/lib/db/schema.js` (`CREATE TABLE IF NOT EXISTS`, safe to run repeatedly, applied under a
 lock so many processes starting together are safe) — the first time the app touches the database.
