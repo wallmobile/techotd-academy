@@ -11,36 +11,20 @@ students, class sessions, attendance, assignments and evaluation).
 - **React 19.2.8**
 - **Tailwind CSS v4**
 - **JavaScript / JSX** — no TypeScript
-- **better-sqlite3** — a local SQLite database file, no external DB server required
+- **PostgreSQL** (via `pg`) — any PostgreSQL server or managed service (Neon, Supabase, RDS, ...); the app itself is stateless, so it also runs on Vercel
 - **bcryptjs** — password hashing
 - Server-side sessions via HTTP-only cookies (no JWT/auth library)
 
 ## Requirements
 
 ```text
-Node.js: >=22   (required by better-sqlite3@13 — see node_modules/better-sqlite3/package.json "engines")
+Node.js: >=22.9
 npm:     10.x or newer (bundled with Node 22)
+PostgreSQL: a server you can create a database on (verified on PostgreSQL 18)
 ```
 
-`better-sqlite3` is a native module: on first `npm install` your machine
-compiles it, which needs:
-
-- **Python 3** on your `PATH`
-- A C/C++ build toolchain — on Windows, **Visual Studio Build Tools** with
-  the **"Desktop development with C++"** workload (or a full Visual
-  Studio install with the same workload). This is a standard prerequisite
-  for any Node native module, not something specific to this project.
-
-If `npm install` fails on the `better-sqlite3` build step, install the
-above and re-run `npm install`.
-
-> This project was built and tested in a Linux sandbox; native compilation
-> was verified there. Compiling `better-sqlite3` on Windows specifically
-> was **NOT VERIFIED** in that environment — plain `npm install` is
-> expected to work once Python 3 and the C++ Build Tools above are
-> present (this is exactly what `better-sqlite3`'s own install step
-> requires on any platform), but if you hit a build error, the fix is
-> almost always one of those two prerequisites being missing.
+There are no native modules to compile: `pg` is pure JavaScript, so `npm install`
+needs no Python or C++ toolchain.
 
 ## Installation
 
@@ -50,37 +34,36 @@ npm install
 
 ## Environment Setup
 
-Copy the example file and adjust if needed:
+Copy the example file and fill in your database URL:
 
 ```bash
 copy .env.example .env.local        # Windows (cmd)
 cp .env.example .env.local          # macOS/Linux
 ```
 
-`.env.local` (git-ignored) only needs one variable, and even that has a
-working default if you skip this step entirely:
+`.env.local` (git-ignored) needs one variable:
 
 ```env
-DATABASE_URL="file:./data/app.db"
+DATABASE_URL="postgres://user:password@localhost:5432/techotd_dev"
 ```
 
-`NEXT_PUBLIC_SITE_URL` is optional — it only affects the absolute URLs
-written into page metadata, `robots.txt` and `sitemap.xml`, and defaults
-to a placeholder production URL if unset. It has no effect on local
-functionality.
+Use a local or throw-away database for development — **never the production one**. For a hosted
+database (Neon etc.) use its connection string with `?sslmode=require`. Special characters in the
+password must be percent-encoded.
+
+`NEXT_PUBLIC_SITE_URL` is optional locally — it only affects the absolute URLs written into page
+metadata, `robots.txt` and `sitemap.xml`, and defaults to a placeholder production URL if unset.
 
 Never commit `.env` or `.env.local`.
 
 ## Database Setup
 
-There is no separate init command to run. The SQLite database file
-(`data/app.db` by default) and every table are created automatically —
-deterministically, from `src/lib/db/schema.sql` (`CREATE TABLE IF NOT
-EXISTS`, safe to run repeatedly) — the first time the app touches the
-database, which happens automatically on `npm run dev`, `npm run build`,
-or `npm run start`. No production credentials, no test data, and no rows
-of any kind are created automatically. The database starts completely
-empty.
+Create an empty database (`createdb techotd_dev`) and point `DATABASE_URL` at it. There is no
+separate init command: every table is created automatically — deterministically, from
+`src/lib/db/schema.js` (`CREATE TABLE IF NOT EXISTS`, safe to run repeatedly, applied under a
+lock so many processes starting together are safe) — the first time the app touches the database.
+No test data and no rows of any kind are created automatically. The database starts completely
+empty. Create the first admin with `npm run setup:admin` (see below).
 
 ## Local Development
 
@@ -102,19 +85,19 @@ npm run lint
 npm test
 ```
 
-Uses Node's built-in test runner (`node:test`) — no extra dependencies.
-`tests/register.mjs` points the app at a throwaway SQLite file in the OS
-temp directory (deleted on exit; `data/app.db` is never touched) and
-`tests/loader.mjs` stubs only `next/headers`, `next/cache` and
-`next/navigation`. Everything else — sessions, the DB layer, server actions
-and the trainer/student domain code — is the real application code. Covers:
-route protection and role guards, trainer data isolation (batches, students,
-submissions, evaluation, pending counts, attendance), assignment
-submission/resubmission, password reset (token consumption + session
-revocation) and domain-level smoke checks for the student and trainer areas.
-There is no browser/e2e suite; UI behavior (drawer focus restore, loading and
-error screens, responsive layout) is verified by source review and manual
-checks only.
+Uses Node's built-in test runner (`node:test`). `scripts/run-with-pg.mjs` starts a **temporary
+PostgreSQL cluster** from the PostgreSQL binaries already installed on the machine (set `PG_BIN` to
+their `bin` folder if they are not on `PATH`), or uses the server in `TEST_PG_ADMIN_URL` if you set
+one; `tests/register.mjs` gives every test file its own throw-away database (`techotd_t_*`, never
+`DATABASE_URL`), and `tests/loader.mjs` stubs only `next/headers`, `next/cache` and
+`next/navigation`. Everything else — sessions, the DB layer, server actions and the domain code — is
+the real application code. Covers: route protection and role guards, data isolation, fees,
+certificates, enrollment, CRM, placement, notifications, AI limits, analytics, catalog,
+deployment/config checks, database constraints and concurrency (several processes, simultaneous
+payments/enrollments/certificates), backup/restore.
+
+Browser tests (`npm run build` first, then `npm run test:e2e`) drive real Chrome against the
+production build and an isolated PostgreSQL database.
 
 ## Build
 
@@ -602,9 +585,8 @@ Findings from the pre-Phase-10.7 audit and what was done about them:
   password-reset requests (5 per 15 min per IP+email), the public enquiry
   forms (10 per 10 min per IP) and the public certificate-verification page
   (60 per minute per IP) are rate limited. Counters live in the
-  `rate_limits` table of the **same SQLite file**, so every server process on
-  that database shares them; identifiers are hashed. **Limit of scope:** it
-  does not span several hosts with separate database files, and the client IP
+  `rate_limits` table of the **PostgreSQL database**, so every server instance
+  using that database shares them (one atomic statement per hit); identifiers are hashed. **Limit of scope:** the client IP
   is read from `X-Forwarded-For` / `X-Real-IP`, which is only trustworthy behind
   a reverse proxy you control that overwrites those headers. A multi-host or
   internet-exposed deployment should also rate limit at the proxy/WAF.
@@ -852,9 +834,6 @@ feedback, trainer/admin AI tools, and streaming responses.
   source-reviewed; live checks were HTTP-level).
 - Other staff roles (counsellor, accountant, …) can sign in but only see a
   limited `/admin` landing page; per-role modules come in later phases.
-- Windows native compilation of `better-sqlite3` is expected to work (see
-  Requirements) but was **NOT VERIFIED** on an actual Windows machine —
-  this project was built and tested in a Linux sandbox.
 
 ## Phase 10.11 — Courses & Batches Management and Staff Password Change
 
@@ -906,7 +885,7 @@ Students keep their own flow on the profile page; trainers do not yet have a sel
 ## Deployment Prerequisites & Verification (Phase 10.10)
 
 > **Staging / production deployment:** see [docs/STAGING.md](docs/STAGING.md) (environment, build and
-> start, persistent SQLite storage, migrations, backup and restore, health check `/api/health`,
+> start, Vercel + managed PostgreSQL setup, migrations, backup and restore, health check `/api/health`,
 > smoke tests, rollback, and exactly what is and is not verified). `NEXT_PUBLIC_SITE_URL` must be set
 > at **build** time as well as at runtime; the server validates its configuration at start
 > (`src/instrumentation.js`) and exits on a dangerous setting. `npm run backup:verify -- <file>`
@@ -918,11 +897,11 @@ Students keep their own flow on the profile page; trainers do not yet have a sel
 - For password reset to work: `EMAIL_PROVIDER=resend`, `RESEND_API_KEY`, `EMAIL_FROM` **and** `NEXT_PUBLIC_SITE_URL`. Without them the forgot-password page says reset by email is unavailable; no token is created. (Adapter verified with mocks only.)
 - `TRUSTED_PROXY_HOPS` set to the number of proxies you operate (default 1; 0 if directly exposed).
 
-**Topology limits.** Rate limiting and AI limits live in the SQLite file: they are shared by all processes on that file only. Multiple hosts with separate databases are NOT jointly protected — add proxy/WAF limits. SQLite itself implies a single host.
+**Topology.** Rate limiting and AI limits live in PostgreSQL, so they are shared by every instance using the same database (including several serverless instances). Add proxy/WAF limits in front for volumetric abuse.
 
 **Content-Security-Policy.** Static policy (self-only; no remote origins; no framing/plugins). `'unsafe-inline'` remains for script/style because Next.js emits inline bootstrap code and a nonce would force all public pages dynamic. Tested in real Chrome: no violations across the app.
 
-**Backups.** `npm run backup [file]` (SQLite online backup + integrity check; never overwrites). Schedule it and copy off-host.
+**Backups.** Turn on your database provider's backups / point-in-time recovery first. `npm run backup [file]` additionally writes a `pg_dump` archive (never overwrites; needs the PostgreSQL client tools); `npm run backup:verify -- <file>` checks it. Schedule it and copy off-host.
 
 **Email preferences.** Each user can switch off email delivery on their notifications page (in-app unaffected).
 
