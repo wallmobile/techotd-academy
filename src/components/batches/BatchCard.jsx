@@ -111,7 +111,7 @@ export function BatchCard({ batch, delay = 0, spotlight = false }) {
   if (!course) return null;
 
   const { days, time } = splitSchedule(batch.schedule);
-  const start = parseStart(batch.startsOn);
+  const start = batch.datesTba ? null : parseStart(batch.startsOn);
   const duration = displayDuration(course);
   const enquireHref = `/book-demo?course=${course.slug}&batch=${batch.id}&source=batches`;
   const style = { animationDelay: `${delay}ms` };

@@ -200,7 +200,7 @@ export async function AuthShell({ eyebrow, title, description, highlights, aside
                     <p className="text-[9px] font-semibold uppercase tracking-wider text-muted">Next batch starts</p>
                     <p className="truncate text-[13px] font-semibold">{nextCourse.title}</p>
                     <p className="text-[11px] text-muted">
-                      {nextBatch.startDate} · {nextBatch.schedule.split("•")[1]?.trim()}
+                      {nextBatch.startDate} · {nextBatch.schedule.split("•")[1]?.trim() || nextBatch.schedule}
                     </p>
                   </div>
                   <span aria-hidden="true" className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">

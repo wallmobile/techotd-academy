@@ -71,7 +71,7 @@ export async function UpcomingBatches() {
           </span>
         </h2>
         <p className="max-w-2xl text-balance text-base leading-relaxed text-muted sm:text-lg">
-          Sample schedules — start dates and seat availability are confirmed when you enquire.
+          Dates and timings are being finalised — the exact schedule and availability are confirmed when you enquire.
         </p>
       </Reveal>
 

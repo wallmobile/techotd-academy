@@ -27,6 +27,9 @@ const CERTIFICATION =
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 /** "2026-10-19" -> "19 Oct 2026" (the format used by the code-defined batches). */
+export const BATCH_DATES_TBA = "Dates to be announced";
+export const BATCH_TIMING_TBA = "Timing to be announced";
+
 export function formatBatchDate(iso) {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || "");
   if (!m) return iso || "";
@@ -178,6 +181,11 @@ function mergeBatch(base, row) {
   }
   batch.startDate = formatBatchDate(batch.startsOn);
   batch.endDate = batch.endsOn ? formatBatchDate(batch.endsOn) : "";
+  // Placeholder schedule in the code-defined data: never present it as a real
+  // date/time. An admin-entered start date or schedule replaces it.
+  batch.datesTba = Boolean(base.datesTba) && !row?.startsOn;
+  if (batch.datesTba) batch.startDate = BATCH_DATES_TBA;
+  if (base.datesTba && !row?.schedule) batch.schedule = BATCH_TIMING_TBA;
   return batch;
 }
 

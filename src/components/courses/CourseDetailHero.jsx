@@ -69,7 +69,7 @@ export async function CourseDetailHero({ course }) {
     0
   );
   const nextBatch = (await listBatches({ publicOnly: true, courseSlug: course.slug }))[0];
-  const start = nextBatch ? parseStart(nextBatch.startsOn) : null;
+  const start = nextBatch && !nextBatch.datesTba ? parseStart(nextBatch.startsOn) : null;
   const duration = displayDuration(course);
   const stats = [
     { icon: statIcons.level, label: "Level", value: course.levelLabel },

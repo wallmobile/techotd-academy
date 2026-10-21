@@ -136,7 +136,7 @@ export function BatchExplorer({ batches, courses = [] }) {
               </span>
             </h1>
             <p className="mt-4 max-w-xl text-base text-muted">
-              Sample batch schedules across our courses — exact dates and availability are confirmed during
+              Batch dates and timings are being finalised — enquire and our team will confirm the exact schedule and availability during
               enrollment.
             </p>
           </div>

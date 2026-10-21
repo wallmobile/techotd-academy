@@ -93,7 +93,14 @@ test("without any admin edits the catalog is exactly the code-defined data", asy
   }
   for (const b of staticBatches) {
     const merged = await getBatch(b.id);
-    assert.equal(merged.startDate, b.startDate, "formatted start date identical to the code value");
+    if (b.datesTba) {
+      // placeholder schedules are never shown as real dates/times
+      assert.equal(merged.datesTba, true);
+      assert.equal(merged.startDate, "Dates to be announced");
+      assert.equal(merged.schedule, "Timing to be announced");
+    } else {
+      assert.equal(merged.startDate, b.startDate, "formatted start date identical to the code value");
+    }
     assert.equal(merged.status, b.status);
   }
   assert.equal(formatBatchDate("2026-11-07"), "07 Nov 2026");
@@ -101,6 +108,16 @@ test("without any admin edits the catalog is exactly the code-defined data", asy
   assert.equal(await getCourse("no-such-course"), undefined);
   assert.equal(await getBatch("no-such-batch"), null);
   assert.equal(await getCourse({ toString: () => "x" }), undefined, "non-string ids are rejected");
+});
+
+test("an admin entering a real start date and schedule replaces a placeholder batch's 'to be announced'", async () => {
+  await as("ADMIN", "tba-admin");
+  const base = staticBatches.find((b) => b.datesTba && b.courseSlug === "data-analytics");
+  assert.ok(base, "fixture: a placeholder batch exists");
+  const r = await updateBatch(base.id, { ...batchInput(base.courseSlug, { mode: base.mode, schedule: "Mon – Fri • 6:30 PM", startsOn: "2027-02-01", endsOn: "" }) });
+  assert.equal(r.ok, true, JSON.stringify(r));
+  const merged = await getBatch(base.id);
+  assert.deepEqual([merged.datesTba, merged.startDate, merged.schedule], [false, "01 Feb 2027", "Mon – Fri • 6:30 PM"]);
 });
 
 // ----------------------------------------------------------------- courses
