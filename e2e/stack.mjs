@@ -1,11 +1,16 @@
 // Starts the PRODUCTION server (`next start`, so run `npm run build` first)
-// against an isolated throwaway database, and drives real Chrome through
-// playwright-core. Nothing here touches data/app.db or real credentials.
+// against an isolated throwaway PostgreSQL database, and drives real Chrome through
+// playwright-core. Uses TEST_PG_ADMIN_URL if set (a server you may create databases
+// on), otherwise starts a temporary cluster that is deleted afterwards. Nothing here
+// touches your own database or real credentials.
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import crypto from "node:crypto";
+import pg from "pg";
 import { chromium } from "playwright-core";
+import { startTempPostgres } from "../scripts/pg-test-server.mjs";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 
@@ -23,8 +28,16 @@ export function findChrome() {
 
 export async function startStack({ port = 3210, env = {}, bulk = false } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "techotd-e2e-"));
-  const dbFile = path.join(dir, "e2e.db");
-  const DATABASE_URL = `file:${dbFile.split(path.sep).join("/")}`;
+  const temp = process.env.TEST_PG_ADMIN_URL ? null : await startTempPostgres();
+  const adminUrl = process.env.TEST_PG_ADMIN_URL || temp.adminUrl;
+  const dbName = `techotd_e2e_${crypto.randomBytes(5).toString("hex")}`;
+  const admin = new pg.Client({ connectionString: adminUrl });
+  await admin.connect();
+  await admin.query(`CREATE DATABASE "${dbName}"`);
+  await admin.end();
+  const dbUrl = new URL(adminUrl);
+  dbUrl.pathname = `/${dbName}`;
+  const DATABASE_URL = dbUrl.toString();
   const seedFile = path.join(dir, "seed.json");
   const seed = spawnSync(process.execPath, ["e2e/seed.mjs", seedFile, ...(bulk ? ["bulk"] : [])], {
     cwd: ROOT,
@@ -61,7 +74,7 @@ export async function startStack({ port = 3210, env = {}, bulk = false } = {}) {
   return {
     base,
     data,
-    dbFile,
+    databaseUrl: DATABASE_URL,
     dir,
     logFile,
     browser,
@@ -69,11 +82,19 @@ export async function startStack({ port = 3210, env = {}, bulk = false } = {}) {
       await browser.close();
       server.kill();
       await new Promise((r) => setTimeout(r, 500));
-      // The server may still hold the SQLite file for a moment on Windows; cleanup is best-effort.
       if (!process.env.E2E_KEEP) {
+        if (temp) await temp.stop();
+        else {
+          const cleanup = new pg.Client({ connectionString: adminUrl });
+          await cleanup.connect();
+          await cleanup.query(`DROP DATABASE IF EXISTS "${dbName}" WITH (FORCE)`).catch(() => {});
+          await cleanup.end();
+        }
         try {
           fs.rmSync(dir, { recursive: true, force: true, maxRetries: 8, retryDelay: 250 });
         } catch {}
+      } else if (temp) {
+        console.log(`E2E_KEEP: temporary PostgreSQL left running at ${adminUrl}`);
       }
     },
   };

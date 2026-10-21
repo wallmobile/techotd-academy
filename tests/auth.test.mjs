@@ -31,25 +31,25 @@ test("proxy lets public routes and cookie-bearing requests through", () => {
 
 test("guard: no session -> /login", async () => {
   await signOut();
-  assert.equal(await redirectTarget(() => requireArea("student")), "/login");
+  assert.equal(await redirectTarget(async () => await requireArea("student")), "/login");
 });
 
 test("guard: a student cannot enter the trainer area", async () => {
   await signIn(await makeUser("STUDENT", "stu"));
-  assert.equal(await redirectTarget(() => requireArea("trainer")), "/student");
+  assert.equal(await redirectTarget(async () => await requireArea("trainer")), "/student");
 });
 
 test("guard: a trainer cannot enter the admin area (or the student area)", async () => {
   await signIn(await makeUser("TRAINER", "trn"));
-  assert.equal(await redirectTarget(() => requireArea("admin")), "/trainer");
-  assert.equal(await redirectTarget(() => requireArea("student")), "/trainer");
+  assert.equal(await redirectTarget(async () => await requireArea("admin")), "/trainer");
+  assert.equal(await redirectTarget(async () => await requireArea("student")), "/trainer");
 });
 
 test("guard: each role is admitted to its own area", async () => {
   await signIn(await makeUser("STUDENT", "stu"));
-  assert.equal(await redirectTarget(() => requireArea("student")), null);
+  assert.equal(await redirectTarget(async () => await requireArea("student")), null);
   await signIn(await makeUser("TRAINER", "trn"));
-  assert.equal(await redirectTarget(() => requireArea("trainer")), null);
+  assert.equal(await redirectTarget(async () => await requireArea("trainer")), null);
   await signIn(await makeUser("ADMIN", "adm"));
-  assert.equal(await redirectTarget(() => requireArea("admin")), null);
+  assert.equal(await redirectTarget(async () => await requireArea("admin")), null);
 });

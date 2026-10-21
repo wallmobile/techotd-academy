@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { tdb } from "./tdb.mjs";
 import crypto from "node:crypto";
 import { db } from "@/lib/db/client";
 import {
@@ -43,7 +44,7 @@ async function redirectTarget(fn) {
   return null;
 }
 
-const count = (t) => db.prepare(`SELECT COUNT(*) AS c FROM ${t}`).get().c;
+const count = async (t) => (await tdb.prepare(`SELECT COUNT(*) AS c FROM ${t}`).get()).c;
 const future = new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10);
 const past = new Date(Date.now() - 5 * 86_400_000).toISOString().slice(0, 10);
 
@@ -84,12 +85,12 @@ test("placement managers, admins and super admins can create and publish jobs; n
     await signIn(await makeUser(role, `pm-${role}`));
     const res = await createJob(jobInput());
     assert.equal(res.ok, true, role);
-    const row = db.prepare("SELECT * FROM jobs WHERE id = ?").get(res.jobId);
+    const row = await tdb.prepare("SELECT * FROM jobs WHERE id = ?").get(res.jobId);
     assert.equal(row.status, "DRAFT");
     assert.equal(row.published_at, null);
     assert.ok(row.created_by);
     assert.equal((await setJobStatus(res.jobId, "PUBLISHED")).ok, true);
-    assert.ok(db.prepare("SELECT published_at FROM jobs WHERE id = ?").get(res.jobId).published_at);
+    assert.ok((await tdb.prepare("SELECT published_at FROM jobs WHERE id = ?").get(res.jobId)).published_at);
     assert.equal((await updateJob(res.jobId, jobInput({ title: "Renamed role" }))).ok, true);
     assert.equal((await setJobStatus(res.jobId, "CLOSED")).ok, true);
   }
@@ -116,10 +117,10 @@ test("unauthorized roles can't create, publish, review or read applicants — by
   await signIn(student);
   const applied = await applyToJob({ jobId, coverMessage: "hi" });
   assert.equal(applied.ok, true);
-  const appId = db.prepare("SELECT id FROM job_applications WHERE job_id = ?").get(jobId).id;
+  const appId = (await tdb.prepare("SELECT id FROM job_applications WHERE job_id = ?").get(jobId)).id;
 
   await signOut();
-  const before = [count("jobs"), count("job_applications"), count("audit_log")];
+  const before = [await count("jobs"), await count("job_applications"), await count("audit_log")];
   for (const role of [null, "STUDENT", "TRAINER", "COUNSELLOR", "ACCOUNTANT", "CONTENT_MANAGER"]) {
     if (role) await signIn(await makeUser(role, "intruder"));
     assert.equal(await getPlacementContext(), null, String(role));
@@ -141,14 +142,14 @@ test("unauthorized roles can't create, publish, review or read applicants — by
     assert.equal(await getJobDetail(jobId), null);
     assert.equal(await getPlacementSummary(), null);
   }
-  assert.deepEqual([count("jobs"), count("job_applications"), count("audit_log")], before);
-  assert.equal(db.prepare("SELECT status FROM job_applications WHERE id = ?").get(appId).status, "APPLIED");
-  assert.equal(db.prepare("SELECT status FROM jobs WHERE id = ?").get(jobId).status, "PUBLISHED");
+  assert.deepEqual([await count("jobs"), await count("job_applications"), await count("audit_log")], before);
+  assert.equal((await tdb.prepare("SELECT status FROM job_applications WHERE id = ?").get(appId)).status, "APPLIED");
+  assert.equal((await tdb.prepare("SELECT status FROM jobs WHERE id = ?").get(jobId)).status, "PUBLISHED");
 });
 
 test("job validation rejects bad input and writes nothing", async () => {
   await signIn(await makeUser("PLACEMENT_MANAGER", "val"));
-  const before = count("jobs");
+  const before = await count("jobs");
   const bad = [
     { title: "" },
     { title: "x".repeat(121) },
@@ -168,7 +169,7 @@ test("job validation rejects bad input and writes nothing", async () => {
   assert.equal((await setJobStatus("missing", "PUBLISHED")).reason, "not_found");
   const ok = await createJob(jobInput());
   assert.equal((await setJobStatus(ok.jobId, "ARCHIVED")).reason, "status_invalid");
-  assert.equal(count("jobs"), before + 1);
+  assert.equal(await count("jobs"), before + 1);
 });
 
 // --------------------------------------------------------------- visibility
@@ -201,7 +202,7 @@ test("students see only published, open jobs; drafts, closed and expired jobs ar
   assert.equal((await applyToJob({ jobId: expired, coverMessage: "" })).reason, "deadline_passed");
   assert.equal((await applyToJob({ jobId: draft, coverMessage: "" })).reason, "job_closed");
   assert.equal((await applyToJob({ jobId: "no-such-job", coverMessage: "" })).reason, "job_not_found");
-  assert.equal(db.prepare("SELECT COUNT(*) AS c FROM job_applications WHERE student_user_id = ?").get(student.id).c, 0);
+  assert.equal((await tdb.prepare("SELECT COUNT(*) AS c FROM job_applications WHERE student_user_id = ?").get(student.id)).c, 0);
   assert.ok(await getJobForStudent(open));
 
   // a student sees no staff-side fields on a job
@@ -239,16 +240,16 @@ test("an enrolled student can apply; the applicant comes from the session, not t
 
   const res = await applyAction(null, form({ jobId, coverMessage: "I'd love to join", studentId: other.id, student_user_id: other.id, status: "SELECTED" }));
   assert.equal(res.status, "success");
-  const row = db.prepare("SELECT * FROM job_applications WHERE job_id = ?").get(jobId);
+  const row = await tdb.prepare("SELECT * FROM job_applications WHERE job_id = ?").get(jobId);
   assert.equal(row.student_user_id, student.id, "applicant is the signed-in student");
   assert.equal(row.status, "APPLIED", "a student can't choose their own status");
   assert.equal(row.cover_message, "I'd love to join");
 
   assert.equal((await applyToJob({ jobId, coverMessage: "again" })).reason, "already_applied");
   assert.equal((await applyAction(null, form({ jobId }))).status, "error");
-  assert.equal(db.prepare("SELECT COUNT(*) AS c FROM job_applications WHERE job_id = ?").get(jobId).c, 1);
-  assert.throws(() =>
-    db.prepare("INSERT INTO job_applications (id, job_id, student_user_id) VALUES (?, ?, ?)").run("dup-direct", jobId, student.id)
+  assert.equal((await tdb.prepare("SELECT COUNT(*) AS c FROM job_applications WHERE job_id = ?").get(jobId)).c, 1);
+  await assert.rejects(async () =>
+    await tdb.prepare("INSERT INTO job_applications (id, job_id, student_user_id) VALUES (?, ?, ?)").run("dup-direct", jobId, student.id)
   );
   assert.equal((await applyToJob({ jobId: jobId, coverMessage: "x".repeat(1001) })).ok, false);
 });
@@ -269,8 +270,8 @@ test("students who aren't enrolled (or aren't students) can't apply", async () =
   }
   await signOut();
   assert.equal((await applyToJob({ jobId, coverMessage: "" })).ok, false);
-  assert.equal(count("job_applications") >= 0, true);
-  assert.equal(db.prepare("SELECT COUNT(*) AS c FROM job_applications WHERE job_id = ?").get(jobId).c, 0);
+  assert.equal(await count("job_applications") >= 0, true);
+  assert.equal((await tdb.prepare("SELECT COUNT(*) AS c FROM job_applications WHERE job_id = ?").get(jobId)).c, 0);
 });
 
 test("a student sees only their own applications and can't change anyone's status", async () => {
@@ -281,8 +282,8 @@ test("a student sees only their own applications and can't change anyone's statu
   await applyToJob({ jobId, coverMessage: "from A" });
   await signIn(b);
   await applyToJob({ jobId, coverMessage: "from B" });
-  const appB = db.prepare("SELECT id FROM job_applications WHERE student_user_id = ?").get(b.id).id;
-  const appA = db.prepare("SELECT id FROM job_applications WHERE student_user_id = ?").get(a.id).id;
+  const appB = (await tdb.prepare("SELECT id FROM job_applications WHERE student_user_id = ?").get(b.id)).id;
+  const appA = (await tdb.prepare("SELECT id FROM job_applications WHERE student_user_id = ?").get(a.id)).id;
 
   const mineB = await getMyApplications();
   assert.deepEqual(mineB.map((x) => x.id), [appB]);
@@ -294,12 +295,12 @@ test("a student sees only their own applications and can't change anyone's statu
   assert.equal((await confirmPlacementAction(null, form({ applicationId: appB }))).status, "error");
   assert.equal((await withdrawApplication({ applicationId: appA })).reason, "not_found");
   assert.equal((await withdrawAction(null, form({ applicationId: appA }))).status, "error");
-  assert.equal(db.prepare("SELECT status FROM job_applications WHERE id = ?").get(appA).status, "APPLIED");
-  assert.equal(db.prepare("SELECT status FROM job_applications WHERE id = ?").get(appB).status, "APPLIED");
+  assert.equal((await tdb.prepare("SELECT status FROM job_applications WHERE id = ?").get(appA)).status, "APPLIED");
+  assert.equal((await tdb.prepare("SELECT status FROM job_applications WHERE id = ?").get(appB)).status, "APPLIED");
 
   // B can withdraw their own, once
   assert.equal((await withdrawApplication({ applicationId: appB })).ok, true);
-  assert.equal(db.prepare("SELECT status FROM job_applications WHERE id = ?").get(appB).status, "WITHDRAWN");
+  assert.equal((await tdb.prepare("SELECT status FROM job_applications WHERE id = ?").get(appB)).status, "WITHDRAWN");
   assert.equal((await withdrawApplication({ applicationId: appB })).reason, "cannot_withdraw");
   assert.equal((await applyToJob({ jobId, coverMessage: "retry" })).reason, "already_applied", "a withdrawn application can't be re-submitted");
 });
@@ -310,10 +311,10 @@ test("staff move applications through valid transitions only; notes stay interna
   const student = await enrolledStudent("review");
   await signIn(student);
   await applyToJob({ jobId, coverMessage: "hello" });
-  const appId = db.prepare("SELECT id FROM job_applications WHERE job_id = ?").get(jobId).id;
+  const appId = (await tdb.prepare("SELECT id FROM job_applications WHERE job_id = ?").get(jobId)).id;
 
   await signIn(manager);
-  const move = (status, notes) => updateApplicationStatus({ applicationId: appId, status, notes });
+  const move = async (status, notes) => await updateApplicationStatus({ applicationId: appId, status, notes });
   assert.equal((await move("SELECTED")).reason, "transition_invalid", "can't skip the pipeline");
   assert.equal((await move("INTERVIEW")).reason, "transition_invalid");
   assert.equal((await move("WITHDRAWN")).reason, "status_invalid", "staff can't withdraw for a student");
@@ -330,7 +331,7 @@ test("staff move applications through valid transitions only; notes stay interna
   const staffView = await getJobDetail(jobId);
   assert.equal(staffView.applications[0].staffNotes, "Strong portfolio — INTERNAL");
   assert.equal(staffView.applications[0].email, student.email);
-  const transitions = db.prepare("SELECT detail FROM audit_log WHERE entity_id = ? AND action = 'APPLICATION_STATUS_CHANGED'").all(appId);
+  const transitions = await tdb.prepare("SELECT detail FROM audit_log WHERE entity_id = ? AND action = 'APPLICATION_STATUS_CHANGED'").all(appId);
   assert.equal(transitions.length, 5);
 
   // the student sees the status but never the staff notes
@@ -346,7 +347,7 @@ test("SELECTED is not a placement: only an explicit confirmation counts, and it 
   const student = await enrolledStudent("placed");
   await signIn(student);
   await applyToJob({ jobId, coverMessage: "" });
-  const appId = db.prepare("SELECT id FROM job_applications WHERE job_id = ?").get(jobId).id;
+  const appId = (await tdb.prepare("SELECT id FROM job_applications WHERE job_id = ?").get(jobId)).id;
 
   await signIn(manager);
   const base = (await getPlacementSummary()).verifiedPlacements;
@@ -362,7 +363,7 @@ test("SELECTED is not a placement: only an explicit confirmation counts, and it 
   assert.equal((await confirmPlacement({ applicationId: appId })).reason, "already_confirmed");
   s = await getPlacementSummary();
   assert.equal(s.verifiedPlacements, base + 1);
-  const row = db.prepare("SELECT placement_confirmed_by, placement_note FROM job_applications WHERE id = ?").get(appId);
+  const row = await tdb.prepare("SELECT placement_confirmed_by, placement_note FROM job_applications WHERE id = ?").get(appId);
   assert.equal(row.placement_confirmed_by, manager.id);
   assert.equal(row.placement_note, "Joined 1 Nov");
 
@@ -371,23 +372,23 @@ test("SELECTED is not a placement: only an explicit confirmation counts, and it 
 
   await signIn(manager);
   await updateApplicationStatus({ applicationId: appId, status: "REJECTED" });
-  assert.equal(db.prepare("SELECT placement_confirmed_at FROM job_applications WHERE id = ?").get(appId).placement_confirmed_at, null);
+  assert.equal((await tdb.prepare("SELECT placement_confirmed_at FROM job_applications WHERE id = ?").get(appId)).placement_confirmed_at, null);
   assert.equal((await getPlacementSummary()).verifiedPlacements, base);
 });
 
 test("summary figures equal the database", async () => {
   await signIn(await makeUser("ADMIN", "summary"));
   const s = await getPlacementSummary();
-  const q = (sql) => db.prepare(sql).get().c;
-  assert.equal(s.jobsTotal, q("SELECT COUNT(*) c FROM jobs"));
-  assert.equal(s.jobsPublished, q("SELECT COUNT(*) c FROM jobs WHERE status = 'PUBLISHED'"));
+  const q = async (sql) => (await tdb.prepare(sql).get()).c;
+  assert.equal(s.jobsTotal, await q("SELECT COUNT(*) c FROM jobs"));
+  assert.equal(s.jobsPublished, await q("SELECT COUNT(*) c FROM jobs WHERE status = 'PUBLISHED'"));
   assert.equal(
     s.jobsOpen,
-    q(`SELECT COUNT(*) c FROM jobs WHERE status = 'PUBLISHED' AND (apply_deadline IS NULL OR apply_deadline >= '${new Date().toISOString().slice(0, 10)}')`)
+    await q(`SELECT COUNT(*) c FROM jobs WHERE status = 'PUBLISHED' AND (apply_deadline IS NULL OR apply_deadline >= '${new Date().toISOString().slice(0, 10)}')`)
   );
-  assert.equal(s.applicationsTotal, q("SELECT COUNT(*) c FROM job_applications"));
-  assert.equal(s.shortlisted, q("SELECT COUNT(*) c FROM job_applications WHERE status = 'SHORTLISTED'"));
-  assert.equal(s.verifiedPlacements, q("SELECT COUNT(*) c FROM job_applications WHERE placement_confirmed_at IS NOT NULL"));
+  assert.equal(s.applicationsTotal, await q("SELECT COUNT(*) c FROM job_applications"));
+  assert.equal(s.shortlisted, await q("SELECT COUNT(*) c FROM job_applications WHERE status = 'SHORTLISTED'"));
+  assert.equal(s.verifiedPlacements, await q("SELECT COUNT(*) c FROM job_applications WHERE placement_confirmed_at IS NOT NULL"));
 });
 
 // ------------------------------------------------------------ search / paging
@@ -422,12 +423,12 @@ test("staff job list and student board: search, filters, pagination; injection i
   assert.equal((await getOpenJobsPage(parseBoardParams({ q: tag, type: "INTERNSHIP", mode: "REMOTE" }))).total, 2);
   assert.equal((await getOpenJobsPage(parseBoardParams({ q: tag, type: "BOGUS" }))).total, 11);
 
-  const before = count("jobs");
+  const before = await count("jobs");
   for (const evil of ["' OR 1=1 --", "'; DROP TABLE jobs; --", "%", "_", "\\"]) {
     const r = await getOpenJobsPage(parseBoardParams({ q: evil, type: evil, mode: evil, page: evil }));
     if (["%", "_", "\\"].includes(evil)) assert.ok(r.rows.every((j) => `${j.title} ${j.companyName} ${j.skills}`.includes(evil)), evil);
   }
-  assert.equal(count("jobs"), before);
+  assert.equal(await count("jobs"), before);
   assert.deepEqual(parseJobParams({ status: "HACK", sort: "x", page: "-3" }), { q: "", status: "", sort: "newest", page: 1 });
 });
 

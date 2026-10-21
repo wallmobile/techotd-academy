@@ -34,9 +34,9 @@ async function world() {
   const studentA = await makeStudentInBatch(batchA.id, course, "studentA");
   const studentB = await makeStudentInBatch(batchB.id, course, "studentB");
 
-  const wideA = createAssignment({ courseSlug: course, batchId: null, title: "Wide A", status: "PUBLISHED", createdBy: trainerA.id });
-  const wideB = createAssignment({ courseSlug: course, batchId: null, title: "Wide B", status: "PUBLISHED", createdBy: trainerB.id });
-  const batchOnlyB = createAssignment({
+  const wideA = await createAssignment({ courseSlug: course, batchId: null, title: "Wide A", status: "PUBLISHED", createdBy: trainerA.id });
+  const wideB = await createAssignment({ courseSlug: course, batchId: null, title: "Wide B", status: "PUBLISHED", createdBy: trainerB.id });
+  const batchOnlyB = await createAssignment({
     courseSlug: course,
     batchId: batchB.id,
     title: "Batch B only",
@@ -88,8 +88,8 @@ test("Trainer A sees only own students' submissions, even on a shared-course ass
 
 test("Trainer A cannot evaluate Trainer B's student's submission", async () => {
   const w = await world();
-  const onB = getSubmissionForStudentAssignment(w.studentB.profile.id, w.wideB.id);
-  const bOnA = getSubmissionForStudentAssignment(w.studentB.profile.id, w.wideA.id);
+  const onB = await getSubmissionForStudentAssignment(w.studentB.profile.id, w.wideB.id);
+  const bOnA = await getSubmissionForStudentAssignment(w.studentB.profile.id, w.wideA.id);
 
   await signIn(w.trainerA);
   // (1) a submission on B's assignment
@@ -99,12 +99,12 @@ test("Trainer A cannot evaluate Trainer B's student's submission", async () => {
   res = await evaluateSubmissionAction(null, form({ submissionId: bOnA.id, status: "REVIEWED", score: "1", feedback: "x" }));
   assert.equal(res.status, "error");
   for (const s of [onB, bOnA]) {
-    const after = getSubmissionForStudentAssignment(w.studentB.profile.id, s.assignmentId);
+    const after = await getSubmissionForStudentAssignment(w.studentB.profile.id, s.assignmentId);
     assert.equal(after.status, "SUBMITTED");
     assert.equal(after.score, null);
   }
   // Trainer A CAN evaluate their own student.
-  const ownSub = getSubmissionForStudentAssignment(w.studentA.profile.id, w.wideA.id);
+  const ownSub = await getSubmissionForStudentAssignment(w.studentA.profile.id, w.wideA.id);
   res = await evaluateSubmissionAction(null, form({ submissionId: ownSub.id, status: "REVIEWED", score: "90", feedback: "ok" }));
   assert.equal(res.status, "success");
 });
@@ -119,7 +119,7 @@ test("pending review counts are per-trainer", async () => {
 
   // Evaluating A's student's work moves only A's count.
   await signIn(w.trainerA);
-  const subA = getSubmissionForStudentAssignment(w.studentA.profile.id, w.wideA.id);
+  const subA = await getSubmissionForStudentAssignment(w.studentA.profile.id, w.wideA.id);
   await evaluateSubmissionAction(null, form({ submissionId: subA.id, status: "REVIEWED", score: "", feedback: "" }));
   assert.equal((await getTrainerDashboardData()).stats.pendingAssignmentReviews, 0);
   await signIn(w.trainerB);

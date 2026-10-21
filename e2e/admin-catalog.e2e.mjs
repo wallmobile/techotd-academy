@@ -32,7 +32,7 @@ before(async () => {
     `INSERT INTO catalog_courses (slug, origin, status, title, short_description, description, category_slug, level, duration, duration_band, modes, technologies, prerequisites, outcomes)
      VALUES (?, 'CUSTOM', ?, ?, 'Synthetic fixture course for pagination.', 'Synthetic fixture course used by the admin catalog tests.', 'programming', 'Beginner', '2 Months', 'Short (Up to 2 Months)', '["Live Online"]', '["Fixture"]', '[]', '[]')`
   );
-  for (let i = 1; i <= 14; i += 1) insert.run(`fixture-${String(i).padStart(2, "0")}`, i % 2 ? "PUBLISHED" : "UNPUBLISHED", `Fixture Course ${String(i).padStart(2, "0")}`);
+  for (let i = 1; i <= 14; i += 1) await insert.run(`fixture-${String(i).padStart(2, "0")}`, i % 2 ? "PUBLISHED" : "UNPUBLISHED", `Fixture Course ${String(i).padStart(2, "0")}`);
   d.close();
 });
 after(async () => {
@@ -88,7 +88,7 @@ test("CC2 create course: validation keeps what was typed, slug is suggested, dup
   assert.equal(await admin.page.getByLabel("Category").inputValue(), "programming", "selection survives the validation error");
   assert.equal(await admin.page.getByLabel("URL name (slug)").inputValue(), "rust-systems-programming");
   let d = db();
-  assert.equal(d.prepare("SELECT COUNT(*) c FROM catalog_courses WHERE slug = 'rust-systems-programming'").get().c, 0);
+  assert.equal((await d.prepare("SELECT COUNT(*) c FROM catalog_courses WHERE slug = 'rust-systems-programming'").get()).c, 0);
   d.close();
 
   await admin.page.getByLabel("Short summary").fill("Learn safe systems programming with Rust.");
@@ -120,7 +120,7 @@ test("CC2 create course: validation keeps what was typed, slug is suggested, dup
   await admin.page.getByRole("button", { name: "Create course" }).click();
   await admin.page.waitForURL(/\/admin\/courses\/rust-systems-programming$/, { timeout: 10000 });
   d = db();
-  const row = d.prepare("SELECT origin, status, title, technologies FROM catalog_courses WHERE slug = 'rust-systems-programming'").get();
+  const row = await d.prepare("SELECT origin, status, title, technologies FROM catalog_courses WHERE slug = 'rust-systems-programming'").get();
   d.close();
   assert.deepEqual({ ...row }, { origin: "CUSTOM", status: "UNPUBLISHED", title: "Rust Systems Programming", technologies: '["Rust","Cargo","Git"]' });
   assert.match(await bodyText(admin.page), /Course created/, "audit history shows the creation");
@@ -175,7 +175,7 @@ test("CC4 unpublish asks for confirmation: Cancel and Escape change nothing, Con
   await admin.page.keyboard.press("Escape");
   await dialog.waitFor({ state: "hidden" });
   let d = db();
-  assert.equal(d.prepare("SELECT status FROM catalog_courses WHERE slug = 'rust-systems-programming'").get().status, "PUBLISHED", "nothing changed");
+  assert.equal((await d.prepare("SELECT status FROM catalog_courses WHERE slug = 'rust-systems-programming'").get()).status, "PUBLISHED", "nothing changed");
   d.close();
 
   await open();
@@ -184,7 +184,7 @@ test("CC4 unpublish asks for confirmation: Cancel and Escape change nothing, Con
   await dialog.getByRole("button", { name: "Unpublish course" }).click();
   await admin.page.getByText(/Course unpublished\./).waitFor();
   d = db();
-  assert.equal(d.prepare("SELECT status FROM catalog_courses WHERE slug = 'rust-systems-programming'").get().status, "UNPUBLISHED");
+  assert.equal((await d.prepare("SELECT status FROM catalog_courses WHERE slug = 'rust-systems-programming'").get()).status, "UNPUBLISHED");
   d.close();
   const anon = await anonSession();
   try {
@@ -234,7 +234,7 @@ test("CC5 editing a code-defined course changes the public page, keeps its sylla
     assert.equal(await admin.page.getByLabel("Technologies (comma separated)").inputValue(), "Rust, Tokio");
     assert.match(await bodyText(admin.page), /URL name \/courses\/rust-systems-programming \(fixed/);
     const d = db();
-    assert.equal(d.prepare("SELECT slug FROM catalog_courses WHERE title = 'Rust Systems Programming'").get().slug, "rust-systems-programming", "the slug never changes");
+    assert.equal((await d.prepare("SELECT slug FROM catalog_courses WHERE title = 'Rust Systems Programming'").get()).slug, "rust-systems-programming", "the slug never changes");
     d.close();
     anon.assertClean("edited course");
     admin.assertClean("edit course");
@@ -345,7 +345,7 @@ test("CB3 trainer assignment: assign, see it on the trainer's side, remove with 
   await trainer.goto("/trainer/batches");
   assert.ok(!/Rust Systems Programming/.test(await bodyText(trainer.page)), "access is gone after removal");
   const d = db();
-  const actions = d.prepare("SELECT action FROM audit_log WHERE entity_id = ? ORDER BY created_at, rowid").all(state.batchId).map((r) => r.action);
+  const actions = (await d.prepare("SELECT action FROM audit_log WHERE entity_id = ? ORDER BY created_at, seq").all(state.batchId)).map((r) => r.action);
   d.close();
   assert.deepEqual(actions.filter((a) => a.startsWith("batch.trainer")), ["batch.trainer_assigned", "batch.trainer_removed"]);
   // re-assign for the enrollment test
@@ -379,7 +379,7 @@ test("CB4 enrollment lifecycle: enroll into the new batch, edit it, close it (co
   await admin.page.getByText("Batch saved.").waitFor();
   assert.match(await bodyText(admin.page), /Batch edited — schedule/);
   const d = db();
-  assert.equal(d.prepare("SELECT status FROM batch_enrollments WHERE batch_id = ?").get(state.batchId).status, "ACTIVE");
+  assert.equal((await d.prepare("SELECT status FROM batch_enrollments WHERE batch_id = ?").get(state.batchId)).status, "ACTIVE");
   d.close();
 
   // close with confirmation
@@ -412,7 +412,7 @@ test("CB4 enrollment lifecycle: enroll into the new batch, edit it, close it (co
   await admin.page.getByRole("dialog").getByRole("button", { name: "Set to Archived" }).click();
   await admin.page.getByText(/still has active enrollments/).waitFor();
   const d2 = db();
-  assert.equal(d2.prepare("SELECT status FROM catalog_batches WHERE id = ?").get(state.batchId).status, "Closed");
+  assert.equal((await d2.prepare("SELECT status FROM catalog_batches WHERE id = ?").get(state.batchId)).status, "Closed");
   d2.close();
   admin.assertClean("batch lifecycle");
 });
@@ -520,7 +520,7 @@ test("CZ2 forged mutations: non-managers replaying the create/status actions cre
   const anonRes = await fetch(stack.base + "/admin/courses/new", { method: "POST", body: Object.entries(payload).reduce((f, [k, v]) => (f.append(k, v), f), new FormData()), headers: { Origin: stack.base }, redirect: "manual" });
   assert.ok(anonRes.status < 500);
   const d = db();
-  assert.equal(d.prepare("SELECT COUNT(*) c FROM catalog_courses WHERE slug = 'forged-course'").get().c, 0, "nothing was created");
+  assert.equal((await d.prepare("SELECT COUNT(*) c FROM catalog_courses WHERE slug = 'forged-course'").get()).c, 0, "nothing was created");
   d.close();
 });
 

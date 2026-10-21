@@ -55,7 +55,7 @@ test("A3 enquiry: client-side validation blocks an empty submit, a valid one suc
     const text = await bodyText(s.page);
     assert.match(text, /name|required|enter/i);
     const db = openDb(stack);
-    assert.equal(db.prepare("SELECT COUNT(*) c FROM leads").get().c, 0);
+    assert.equal((await db.prepare("SELECT COUNT(*) c FROM leads").get()).c, 0);
 
     await s.page.getByLabel(/Full Name/i).fill("Browser Tester");
     await s.page.getByLabel(/Phone Number/i).fill("9876543210");
@@ -64,7 +64,7 @@ test("A3 enquiry: client-side validation blocks an empty submit, a valid one suc
     await s.page.locator('input[type="checkbox"]').check();
     await s.page.getByRole("button", { name: /submit request/i }).click();
     await s.page.getByText(/thank|received|we.?ll (be in touch|contact)|submitted/i).first().waitFor({ timeout: 10000 });
-    const row = db.prepare("SELECT name, source, email, consent FROM leads").all();
+    const row = await db.prepare("SELECT name, source, email, consent FROM leads").all();
     assert.equal(row.length, 1);
     assert.equal(row[0].name, "Browser Tester");
     assert.equal(row[0].email, "browser.tester@example.test");
@@ -87,7 +87,7 @@ test("A4 book-demo works on a phone-sized viewport with no horizontal scrolling"
     await s.page.getByRole("button", { name: /book my free session/i }).click();
     await s.page.getByText(/thank|booked|received|we.?ll/i).first().waitFor({ timeout: 10000 });
     const db = openDb(stack);
-    const row = db.prepare("SELECT source FROM leads WHERE email = ?").get("mobile.tester@example.test");
+    const row = await db.prepare("SELECT source FROM leads WHERE email = ?").get("mobile.tester@example.test");
     assert.equal(row.source, "BOOK_DEMO");
     db.close();
     s.assertClean("book demo (mobile)");
@@ -106,7 +106,7 @@ test("A5 consent is mandatory: submitting without it stores nothing", async () =
     await s.page.getByRole("button", { name: /submit request/i }).click();
     await s.page.waitForTimeout(500);
     const db = openDb(stack);
-    assert.equal(db.prepare("SELECT COUNT(*) c FROM leads WHERE email = ?").get("noconsent@example.test").c, 0);
+    assert.equal((await db.prepare("SELECT COUNT(*) c FROM leads WHERE email = ?").get("noconsent@example.test")).c, 0);
     db.close();
   } finally {
     await s.close();
@@ -246,7 +246,7 @@ test("B6 an expired session is rejected and sent to login", async () => {
     await s.goto("/student");
     assert.equal(new URL(s.page.url()).pathname, "/student");
     const db = openDb(stack, { readonly: false });
-    db.prepare("UPDATE sessions SET expires_at = datetime('now', '-1 hour') WHERE user_id = ?").run(stack.data.users.student2.id);
+    await db.prepare("UPDATE sessions SET expires_at = app_now('-1 hour') WHERE user_id = ?").run(stack.data.users.student2.id);
     db.close();
     await s.goto("/student");
     assert.equal(new URL(s.page.url()).pathname, "/login");
@@ -294,12 +294,12 @@ test("B8 password reset in production: no email provider ⇒ honest message, no 
     await s.page.getByRole("button", { name: /send reset instructions/i }).click();
     await s.page.getByText(/isn.?t available right now/i).waitFor();
     const db = openDb(stack, { readonly: false });
-    assert.equal(db.prepare("SELECT COUNT(*) c FROM password_reset_tokens").get().c, 0);
+    assert.equal((await db.prepare("SELECT COUNT(*) c FROM password_reset_tokens").get()).c, 0);
     assert.ok(!(await bodyText(s.page)).includes("/reset-password?token="), "no link leaks into the page");
 
     // Arrange a token (what an email would have carried) and run the real reset UI.
     const raw = crypto.randomBytes(24).toString("base64url");
-    db.prepare("INSERT INTO password_reset_tokens (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)").run(
+    await db.prepare("INSERT INTO password_reset_tokens (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)").run(
       crypto.randomUUID(),
       stack.data.users.student.id,
       crypto.createHash("sha256").update(raw).digest("hex"),
@@ -359,7 +359,7 @@ test("B9 registration: validation, duplicate email, and a successful sign-up lan
     await fill("new.registrant@e2e.test");
     await s.page.waitForURL((u) => u.pathname.startsWith("/student"), { timeout: 10000 });
     const db = openDb(stack);
-    const u = db.prepare("SELECT role, status FROM users WHERE email = ?").get("new.registrant@e2e.test");
+    const u = await db.prepare("SELECT role, status FROM users WHERE email = ?").get("new.registrant@e2e.test");
     assert.deepEqual({ ...u }, { role: "STUDENT", status: "ACTIVE" }, "self-registration can only ever create a STUDENT");
     db.close();
     s.assertClean("registration");

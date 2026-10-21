@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { tdb } from "./tdb.mjs";
 import { db } from "@/lib/db/client";
 import { getSuperAdminContext, requireSuperAdminContext } from "@/lib/superAdmin/context";
 import { getStaffPage, getSuperAdminOverview, createStaffAccount } from "@/lib/superAdmin/staff";
@@ -25,7 +26,7 @@ async function redirectTarget(fn) {
   return null;
 }
 
-const userCount = () => db.prepare("SELECT COUNT(*) AS c FROM users").get().c;
+const userCount = async () => (await tdb.prepare("SELECT COUNT(*) AS c FROM users").get()).c;
 const NON_SUPER = ["STUDENT", "TRAINER", "ADMIN", "COUNSELLOR", "ACCOUNTANT", "CONTENT_MANAGER", "PLACEMENT_MANAGER"];
 
 test("super admin lands on /super-admin; every other role keeps its own home", () => {
@@ -49,18 +50,18 @@ test("super admin context: only an active SUPER_ADMIN passes", async () => {
 test("page guard: anonymous -> /login; other roles are sent to their own area", async () => {
   await signOut();
   assert.equal(await redirectTarget(requireSuperAdminContext), "/login");
-  assert.equal(await redirectTarget(() => requireArea("super-admin")), "/login");
+  assert.equal(await redirectTarget(async () => await requireArea("super-admin")), "/login");
 
   await signIn(await makeUser("STUDENT", "stu"));
-  assert.equal(await redirectTarget(() => requireArea("super-admin")), "/student");
+  assert.equal(await redirectTarget(async () => await requireArea("super-admin")), "/student");
   await signIn(await makeUser("TRAINER", "trn"));
-  assert.equal(await redirectTarget(() => requireArea("super-admin")), "/trainer");
+  assert.equal(await redirectTarget(async () => await requireArea("super-admin")), "/trainer");
   await signIn(await makeUser("ADMIN", "adm"));
-  assert.equal(await redirectTarget(() => requireArea("super-admin")), "/admin");
+  assert.equal(await redirectTarget(async () => await requireArea("super-admin")), "/admin");
   assert.equal(await redirectTarget(requireSuperAdminContext), "/admin");
 
   await signIn(await makeUser("SUPER_ADMIN", "sa"));
-  assert.equal(await redirectTarget(() => requireArea("super-admin")), null);
+  assert.equal(await redirectTarget(async () => await requireArea("super-admin")), null);
   assert.ok(await requireSuperAdminContext());
 });
 
@@ -97,13 +98,13 @@ test("staff list holds only staff roles; overview counts are real", async () => 
 test("create staff: creates the chosen role, hashed password, ACTIVE", async () => {
   await signIn(await makeUser("SUPER_ADMIN", "sa"));
   const email = "new.accountant@example.test";
-  const before = userCount();
-  const target = await redirectTarget(() =>
-    createStaffAction(null, form({ name: "New Accountant", email, phone: "", password: "Password-123", role: "ACCOUNTANT" }))
+  const before = await userCount();
+  const target = await redirectTarget(async () =>
+    await createStaffAction(null, form({ name: "New Accountant", email, phone: "", password: "Password-123", role: "ACCOUNTANT" }))
   );
   assert.match(target, /^\/admin\/users\//);
-  assert.equal(userCount(), before + 1);
-  const row = findUserByEmailInternal(email);
+  assert.equal(await userCount(), before + 1);
+  const row = await findUserByEmailInternal(email);
   assert.equal(row.role, "ACCOUNTANT");
   assert.equal(row.status, "ACTIVE");
   assert.notEqual(row.passwordHash, "Password-123");
@@ -112,12 +113,12 @@ test("create staff: creates the chosen role, hashed password, ACTIVE", async () 
 test("create staff: SUPER_ADMIN/STUDENT/TRAINER/garbage roles are rejected and nothing is written", async () => {
   await signIn(await makeUser("SUPER_ADMIN", "sa"));
   for (const role of ["SUPER_ADMIN", "STUDENT", "TRAINER", "NOPE", ""]) {
-    const before = userCount();
+    const before = await userCount();
     const email = `evil-${role || "blank"}@example.test`.toLowerCase();
     const result = await createStaffAction(null, form({ name: "Evil Person", email, phone: "", password: "Password-123", role }));
     assert.equal(result.status, "error", `role ${JSON.stringify(role)}`);
-    assert.equal(userCount(), before);
-    assert.equal(findUserByEmailInternal(email), null);
+    assert.equal(await userCount(), before);
+    assert.equal(await findUserByEmailInternal(email), null);
   }
   // Domain function enforces it independently of the form validator.
   assert.deepEqual(
@@ -129,23 +130,23 @@ test("create staff: SUPER_ADMIN/STUDENT/TRAINER/garbage roles are rejected and n
 test("create staff: non-super-admins are refused and nothing is written", async () => {
   for (const role of NON_SUPER) {
     await signIn(await makeUser(role, role.toLowerCase()));
-    const before = userCount();
+    const before = await userCount();
     const email = `by-${role}@example.test`.toLowerCase();
     const result = await createStaffAction(null, form({ name: "Sneaky Admin", email, phone: "", password: "Password-123", role: "ADMIN" }));
     assert.equal(result.status, "error", role);
-    assert.equal(userCount(), before, `${role} must not create accounts`);
-    assert.equal(findUserByEmailInternal(email), null);
+    assert.equal(await userCount(), before, `${role} must not create accounts`);
+    assert.equal(await findUserByEmailInternal(email), null);
   }
   await signOut();
   const result = await createStaffAction(null, form({ name: "Anon Person", email: "anon@example.test", phone: "", password: "Password-123", role: "ADMIN" }));
   assert.equal(result.status, "error");
-  assert.equal(findUserByEmailInternal("anon@example.test"), null);
+  assert.equal(await findUserByEmailInternal("anon@example.test"), null);
 });
 
 test("create staff: duplicate email and weak input are reported without creating", async () => {
   await signIn(await makeUser("SUPER_ADMIN", "sa"));
   const existing = await makeUser("COUNSELLOR", "dupe");
-  const before = userCount();
+  const before = await userCount();
 
   const dupe = await createStaffAction(null, form({ name: "Dupe Person", email: existing.email, phone: "", password: "Password-123", role: "ADMIN" }));
   assert.equal(dupe.status, "error");
@@ -154,6 +155,6 @@ test("create staff: duplicate email and weak input are reported without creating
   const weak = await createStaffAction(null, form({ name: "A", email: "not-an-email", phone: "", password: "short", role: "ADMIN" }));
   assert.equal(weak.status, "error");
   assert.ok(weak.errors.name && weak.errors.email && weak.errors.password);
-  assert.equal(userCount(), before);
+  assert.equal(await userCount(), before);
   assert.equal("password" in (weak.values || {}), false, "password is never echoed back");
 });

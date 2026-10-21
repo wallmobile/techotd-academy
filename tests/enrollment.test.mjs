@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { tdb } from "./tdb.mjs";
 import crypto from "node:crypto";
 import { db } from "@/lib/db/client";
 import {
@@ -44,7 +45,7 @@ async function redirectTarget(fn) {
   return null;
 }
 
-const rowCount = (table) => db.prepare(`SELECT COUNT(*) AS c FROM ${table}`).get().c;
+const rowCount = async (table) => (await tdb.prepare(`SELECT COUNT(*) AS c FROM ${table}`).get()).c;
 const OTHER_COURSE_BATCH = batches.find((b) => b.courseSlug !== batches[0].courseSlug);
 
 // Fresh batches (unique ids, same course) so tests never share state through a batch.
@@ -52,9 +53,9 @@ function twoBatches() {
   return ensureSecondBatch();
 }
 
-function seedLead(overrides = {}) {
+async function seedLead(overrides = {}) {
   const tag = crypto.randomUUID().slice(0, 8);
-  return createLead({
+  return await createLead({
     name: `Lead ${tag}`,
     phone: "9876543210",
     email: `lead-${tag}@example.test`,
@@ -81,7 +82,7 @@ test("admin can enroll an active student: batch + course enrollment, ACTIVE, vis
   assert.equal(detail.batchId, batchA.id);
   assert.ok(detail.courseTitle && detail.enrolledAt);
 
-  const courseRow = db
+  const courseRow = await tdb
     .prepare("SELECT ce.status FROM course_enrollments ce JOIN student_profiles sp ON sp.id = ce.student_id WHERE sp.user_id = ? AND ce.course_slug = ?")
     .get(student.id, batchA.courseSlug);
   assert.equal(courseRow.status, "ACTIVE");
@@ -98,8 +99,8 @@ test("the enrollment server action works for admins and super admins and redirec
   for (const role of ["ADMIN", "SUPER_ADMIN"]) {
     const student = await makeUser("STUDENT", "viaaction");
     await signIn(await makeUser(role, role.toLowerCase()));
-    const location = await redirectTarget(() =>
-      createEnrollmentAction(null, form({ studentId: student.id, course: batchA.courseSlug, batch: batchA.id }))
+    const location = await redirectTarget(async () =>
+      await createEnrollmentAction(null, form({ studentId: student.id, course: batchA.courseSlug, batch: batchA.id }))
     );
     assert.match(location, /^\/admin\/enrollments\/[0-9a-f-]{36}$/);
   }
@@ -113,7 +114,7 @@ test("non-admins (and anonymous) cannot create or change enrollments, by functio
   const other = await makeUser("STUDENT", "other");
 
   await signOut();
-  const before = [rowCount("batch_enrollments"), rowCount("course_enrollments")];
+  const before = [await rowCount("batch_enrollments"), await rowCount("course_enrollments")];
   for (const role of [null, "STUDENT", "TRAINER", "COUNSELLOR", "ACCOUNTANT", "CONTENT_MANAGER", "PLACEMENT_MANAGER"]) {
     if (role) await signIn(await makeUser(role, "intruder"));
     assert.equal((await createEnrollment({ studentUserId: other.id, courseSlug: batchA.courseSlug, batchId: batchA.id })).ok, false);
@@ -126,15 +127,15 @@ test("non-admins (and anonymous) cannot create or change enrollments, by functio
     assert.equal(await getEnrollmentCounts(), null);
     assert.equal(await getEnrollmentFormData({}), null);
   }
-  assert.deepEqual([rowCount("batch_enrollments"), rowCount("course_enrollments")], before);
-  assert.equal(db.prepare("SELECT status FROM batch_enrollments WHERE id = ?").get(made.enrollmentId).status, "ACTIVE");
+  assert.deepEqual([await rowCount("batch_enrollments"), await rowCount("course_enrollments")], before);
+  assert.equal((await tdb.prepare("SELECT status FROM batch_enrollments WHERE id = ?").get(made.enrollmentId)).status, "ACTIVE");
 });
 
 test("invalid, inactive and non-student targets are rejected", async () => {
   const { batchA } = twoBatches();
   await signIn(await makeUser("ADMIN", "validator"));
-  const before = rowCount("batch_enrollments");
-  const attempt = (id) => createEnrollment({ studentUserId: id, courseSlug: batchA.courseSlug, batchId: batchA.id });
+  const before = await rowCount("batch_enrollments");
+  const attempt = async (id) => await createEnrollment({ studentUserId: id, courseSlug: batchA.courseSlug, batchId: batchA.id });
 
   assert.equal((await attempt("no-such-user")).reason, "student_invalid");
   assert.equal((await attempt("")).reason, "student_invalid");
@@ -144,10 +145,10 @@ test("invalid, inactive and non-student targets are rejected", async () => {
   assert.equal((await attempt((await makeUser("COUNSELLOR", "c")).id)).reason, "student_invalid");
   for (const status of ["INACTIVE", "SUSPENDED"]) {
     const s = await makeUser("STUDENT", "inactive");
-    db.prepare("UPDATE users SET status = ? WHERE id = ?").run(status, s.id);
+    await tdb.prepare("UPDATE users SET status = ? WHERE id = ?").run(status, s.id);
     assert.equal((await attempt(s.id)).reason, "student_inactive", status);
   }
-  assert.equal(rowCount("batch_enrollments"), before);
+  assert.equal(await rowCount("batch_enrollments"), before);
 });
 
 test("invalid course / batch, course-batch mismatch and closed batches are rejected", async () => {
@@ -158,9 +159,9 @@ test("invalid course / batch, course-batch mismatch and closed batches are rejec
   batches.push(upcoming);
   const student = await makeUser("STUDENT", "rules");
   await signIn(await makeUser("ADMIN", "rules-admin"));
-  const before = [rowCount("batch_enrollments"), rowCount("course_enrollments")];
+  const before = [await rowCount("batch_enrollments"), await rowCount("course_enrollments")];
 
-  const go = (courseSlug, batchId) => createEnrollment({ studentUserId: student.id, courseSlug, batchId });
+  const go = async (courseSlug, batchId) => await createEnrollment({ studentUserId: student.id, courseSlug, batchId });
   assert.equal((await go("no-such-course", batchA.id)).reason, "course_invalid");
   assert.equal((await go("", batchA.id)).reason, "course_invalid");
   assert.equal((await go(batchA.courseSlug, "no-such-batch")).reason, "batch_invalid");
@@ -169,7 +170,7 @@ test("invalid course / batch, course-batch mismatch and closed batches are rejec
   assert.equal((await go(otherCourse.slug, batchA.id)).reason, "batch_mismatch", "Course A + batch of Course B");
   assert.equal((await go(batchA.courseSlug, OTHER_COURSE_BATCH.id)).reason, "batch_mismatch");
   assert.equal((await go(batchA.courseSlug, closed.id)).reason, "batch_closed");
-  assert.deepEqual([rowCount("batch_enrollments"), rowCount("course_enrollments")], before, "rejections wrote nothing");
+  assert.deepEqual([await rowCount("batch_enrollments"), await rowCount("course_enrollments")], before, "rejections wrote nothing");
 
   assert.equal((await go(batchA.courseSlug, upcoming.id)).ok, true, "Upcoming batches accept enrollments");
 });
@@ -178,28 +179,28 @@ test("duplicates are rejected; cancelled enrollments re-activate the same row; c
   const { batchA } = twoBatches();
   const student = await makeUser("STUDENT", "dup");
   await signIn(await makeUser("ADMIN", "dup-admin"));
-  const go = () => createEnrollment({ studentUserId: student.id, courseSlug: batchA.courseSlug, batchId: batchA.id });
-  const countFor = () =>
-    db
+  const go = async () => await createEnrollment({ studentUserId: student.id, courseSlug: batchA.courseSlug, batchId: batchA.id });
+  const countFor = async () =>
+    (await tdb
       .prepare("SELECT COUNT(*) AS c FROM batch_enrollments be JOIN student_profiles sp ON sp.id = be.student_id WHERE sp.user_id = ? AND be.batch_id = ?")
-      .get(student.id, batchA.id).c;
+      .get(student.id, batchA.id)).c;
 
   const first = await go();
   assert.equal(first.ok, true);
   assert.equal((await go()).reason, "duplicate");
   assert.equal((await go()).reason, "duplicate");
-  assert.equal(countFor(), 1);
+  assert.equal(await countFor(), 1);
 
   assert.equal((await setEnrollmentStatus(first.enrollmentId, "CANCELLED")).ok, true);
   const again = await go();
   assert.equal(again.ok, true);
   assert.equal(again.enrollmentId, first.enrollmentId, "history row is reused, not duplicated");
-  assert.equal(countFor(), 1);
+  assert.equal(await countFor(), 1);
   assert.equal((await getEnrollmentDetail(first.enrollmentId)).status, "ACTIVE");
 
   assert.equal((await setEnrollmentStatus(first.enrollmentId, "COMPLETED")).ok, true);
   assert.equal((await go()).reason, "completed");
-  assert.equal(countFor(), 1);
+  assert.equal(await countFor(), 1);
 });
 
 test("status changes: validated, never delete, and the course status follows its batches", async () => {
@@ -208,11 +209,11 @@ test("status changes: validated, never delete, and the course status follows its
   await signIn(await makeUser("ADMIN", "life-admin"));
   const a = await createEnrollment({ studentUserId: student.id, courseSlug: batchA.courseSlug, batchId: batchA.id });
   const b = await createEnrollment({ studentUserId: student.id, courseSlug: batchB.courseSlug, batchId: batchB.id });
-  const courseStatus = () =>
-    db
+  const courseStatus = async () =>
+    (await tdb
       .prepare("SELECT ce.status FROM course_enrollments ce JOIN student_profiles sp ON sp.id = ce.student_id WHERE sp.user_id = ? AND ce.course_slug = ?")
-      .get(student.id, batchA.courseSlug).status;
-  const total = rowCount("batch_enrollments");
+      .get(student.id, batchA.courseSlug)).status;
+  const total = await rowCount("batch_enrollments");
 
   for (const bad of ["", "DONE", "active", "PAUSED", undefined, null, "CANCELLED; DROP TABLE batch_enrollments"]) {
     assert.equal((await setEnrollmentStatus(a.enrollmentId, bad)).reason, "status_invalid", String(bad));
@@ -220,14 +221,14 @@ test("status changes: validated, never delete, and the course status follows its
   assert.equal((await setEnrollmentStatus("missing", "CANCELLED")).reason, "not_found");
 
   assert.equal((await setEnrollmentStatus(a.enrollmentId, "CANCELLED")).ok, true);
-  assert.equal(courseStatus(), "ACTIVE", "another batch of the course is still active");
+  assert.equal(await courseStatus(), "ACTIVE", "another batch of the course is still active");
   assert.equal((await setEnrollmentStatus(b.enrollmentId, "COMPLETED")).ok, true);
-  assert.equal(courseStatus(), "COMPLETED");
+  assert.equal(await courseStatus(), "COMPLETED");
   assert.equal((await setEnrollmentStatus(b.enrollmentId, "CANCELLED")).ok, true);
-  assert.equal(courseStatus(), "CANCELLED");
+  assert.equal(await courseStatus(), "CANCELLED");
   assert.equal((await setEnrollmentStatus(a.enrollmentId, "ACTIVE")).ok, true);
-  assert.equal(courseStatus(), "ACTIVE");
-  assert.equal(rowCount("batch_enrollments"), total, "nothing was deleted");
+  assert.equal(await courseStatus(), "ACTIVE");
+  assert.equal(await rowCount("batch_enrollments"), total, "nothing was deleted");
 
   // re-activating into a batch that has since closed is refused
   const closed = batches.find((x) => x.id === batchB.id);
@@ -248,10 +249,10 @@ test("enrollment list: search, filters, sort and pagination", async () => {
   const made = [];
   for (let i = 0; i < 22; i += 1) {
     const s = await makeUser("STUDENT", `${tag}-${String(i).padStart(2, "0")}`);
-    db.prepare("UPDATE users SET phone = ? WHERE id = ?").run(`70000${String(i).padStart(5, "0")}`, s.id);
+    await tdb.prepare("UPDATE users SET phone = ? WHERE id = ?").run(`70000${String(i).padStart(5, "0")}`, s.id);
     const batch = i % 2 === 0 ? batchA : batchB;
     const res = await createEnrollment({ studentUserId: s.id, courseSlug: batch.courseSlug, batchId: batch.id });
-    db.prepare("UPDATE batch_enrollments SET enrolled_at = ? WHERE id = ?").run(`2020-01-01 00:00:${String(i).padStart(2, "0")}`, res.enrollmentId);
+    await tdb.prepare("UPDATE batch_enrollments SET enrolled_at = ? WHERE id = ?").run(`2020-01-01 00:00:${String(i).padStart(2, "0")}`, res.enrollmentId);
     made.push(res.enrollmentId);
   }
   for (const id of made.slice(0, 4)) await setEnrollmentStatus(id, "CANCELLED");
@@ -280,15 +281,15 @@ test("enrollment list: search, filters, sort and pagination", async () => {
   const names = (await getEnrollmentsPage(params({ sort: "name" }))).rows.map((r) => r.studentName.toLowerCase());
   assert.deepEqual(names, [...names].sort());
 
-  const before = rowCount("batch_enrollments");
+  const before = await rowCount("batch_enrollments");
   for (const evil of ["' OR 1=1 --", "'; DROP TABLE batch_enrollments; --", "%", "_", "\\"]) {
     const r = await getEnrollmentsPage(parseEnrollmentParams({ q: evil, course: evil, batch: evil, status: evil, sort: evil }));
     if (["%", "_", "\\"].includes(evil)) assert.equal(r.total, 0, `${evil} is literal`);
   }
-  assert.equal(rowCount("batch_enrollments"), before);
+  assert.equal(await rowCount("batch_enrollments"), before);
 
   const counts = await getEnrollmentCounts();
-  assert.equal(counts.ACTIVE + counts.COMPLETED + counts.CANCELLED, rowCount("batch_enrollments"));
+  assert.equal(counts.ACTIVE + counts.COMPLETED + counts.CANCELLED, await rowCount("batch_enrollments"));
   const dash = await getAdminDashboardData();
   assert.deepEqual(dash.enrollments, counts);
 });
@@ -297,7 +298,7 @@ test("enrollment form data validates prefill and only offers active students and
   const { batchA } = twoBatches();
   const active = await makeUser("STUDENT", "formstu");
   const inactive = await makeUser("STUDENT", "formoff");
-  db.prepare("UPDATE users SET status = 'INACTIVE' WHERE id = ?").run(inactive.id);
+  await tdb.prepare("UPDATE users SET status = 'INACTIVE' WHERE id = ?").run(inactive.id);
   const trainer = await makeUser("TRAINER", "formtrn");
   await signIn(await makeUser("ADMIN", "form-admin"));
 
@@ -334,11 +335,11 @@ test("students see only their own enrollments and cannot change anything", async
   assert.ok((await getStudentCourseDetail(batchA.courseSlug)).enrollment, "own course is accessible");
 
   // a student can't act on enrollments — their own or anyone else's
-  const before = [rowCount("batch_enrollments"), rowCount("course_enrollments")];
+  const before = [await rowCount("batch_enrollments"), await rowCount("course_enrollments")];
   assert.equal((await setEnrollmentStatusAction(null, form({ enrollmentId: ea.enrollmentId, status: "CANCELLED" }))).status, "error");
   assert.equal((await setEnrollmentStatusAction(null, form({ enrollmentId: eb.enrollmentId, status: "CANCELLED" }))).status, "error");
   assert.equal((await createEnrollmentAction(null, form({ studentId: a.id, course: batchA.courseSlug, batch: batchB.id }))).status, "error");
-  assert.deepEqual([rowCount("batch_enrollments"), rowCount("course_enrollments")], before);
+  assert.deepEqual([await rowCount("batch_enrollments"), await rowCount("course_enrollments")], before);
   assert.equal((await getMyBatchEnrollments()).length, 1);
 
   // student B has no enrollment in a course they weren't given
@@ -372,7 +373,7 @@ test("admin enrollment is the source of truth for the student LMS: cancelling re
 test("trainers see only students enrolled in their assigned batches", async () => {
   const { batchA, batchB } = twoBatches();
   const trainer = await makeUser("TRAINER", "trnA");
-  createTrainerBatchAssignment(trainer.id, batchA.id);
+  await createTrainerBatchAssignment(trainer.id, batchA.id);
   const sA = await makeUser("STUDENT", "inA");
   const sB = await makeUser("STUDENT", "inB");
   await signIn(await makeUser("ADMIN", "trn-admin"));
@@ -395,24 +396,24 @@ test("trainers see only students enrolled in their assigned batches", async () =
 test("converting a lead creates a STUDENT, marks it CONVERTED and links the account once", async () => {
   const admin = await makeUser("ADMIN", "converter");
   await signIn(admin);
-  const lead = seedLead({ phone: "9123456780" });
-  const usersBefore = rowCount("users");
+  const lead = await seedLead({ phone: "9123456780" });
+  const usersBefore = await rowCount("users");
 
   const res = await convertLeadToStudent(lead.id, "Temp-Pass-123");
   assert.equal(res.ok, true);
   assert.equal(res.created, true);
-  assert.equal(rowCount("users"), usersBefore + 1);
+  assert.equal(await rowCount("users"), usersBefore + 1);
 
-  const user = findUserByIdInternal(res.userId);
+  const user = await findUserByIdInternal(res.userId);
   assert.equal(user.role, "STUDENT");
   assert.equal(user.status, "ACTIVE");
   assert.equal(user.email, lead.email);
   assert.equal(user.phone, "9123456780");
   assert.notEqual(user.passwordHash, "Temp-Pass-123");
   assert.equal(await verifyPassword("Temp-Pass-123", user.passwordHash), true);
-  assert.ok(!JSON.stringify(db.prepare("SELECT * FROM users WHERE id = ?").get(user.id)).includes("Temp-Pass-123"));
+  assert.ok(!JSON.stringify(await tdb.prepare("SELECT * FROM users WHERE id = ?").get(user.id)).includes("Temp-Pass-123"));
 
-  const after = getLeadById(lead.id);
+  const after = await getLeadById(lead.id);
   assert.equal(after.status, "CONVERTED");
   assert.equal(after.convertedUserId, user.id);
   assert.ok(after.convertedAt);
@@ -421,45 +422,45 @@ test("converting a lead creates a STUDENT, marks it CONVERTED and links the acco
   const again = await convertLeadToStudent(lead.id, "Another-Pass-123");
   assert.equal(again.ok, false);
   assert.match(again.reason, /already been converted/);
-  assert.equal(rowCount("users"), usersBefore + 1);
-  assert.equal(await verifyPassword("Temp-Pass-123", findUserByIdInternal(user.id).passwordHash), true);
+  assert.equal(await rowCount("users"), usersBefore + 1);
+  assert.equal(await verifyPassword("Temp-Pass-123", (await findUserByIdInternal(user.id)).passwordHash), true);
 });
 
 test("conversion needs a valid password only when a new account is required, and failure leaves the lead untouched", async () => {
   await signIn(await makeUser("ADMIN", "converter2"));
-  const lead = seedLead();
-  const usersBefore = rowCount("users");
+  const lead = await seedLead();
+  const usersBefore = await rowCount("users");
   for (const pw of ["", "short", undefined, null]) {
     assert.equal((await convertLeadToStudent(lead.id, pw)).ok, false);
   }
-  assert.equal(rowCount("users"), usersBefore);
-  assert.equal(getLeadById(lead.id).status, "NEW");
-  assert.equal(getLeadById(lead.id).convertedUserId, null);
+  assert.equal(await rowCount("users"), usersBefore);
+  assert.equal((await getLeadById(lead.id)).status, "NEW");
+  assert.equal((await getLeadById(lead.id)).convertedUserId, null);
   assert.equal((await convertLeadToStudent("missing", "Temp-Pass-123")).ok, false);
 
   // atomic: if the account insert fails mid-transaction, nothing — not even the lead status — is written
-  assert.throws(() =>
-    convertLeadTx({ leadId: lead.id, existingUserId: null, newStudent: { name: "X Y", email: "atomic@example.test", phone: null, passwordHash: undefined } })
+  await assert.rejects(async () =>
+    await convertLeadTx({ leadId: lead.id, existingUserId: null, newStudent: { name: "X Y", email: "atomic@example.test", phone: null, passwordHash: undefined } })
   );
-  assert.equal(rowCount("users"), usersBefore);
-  assert.equal(getLeadById(lead.id).status, "NEW");
-  assert.equal(findUserByEmailInternal("atomic@example.test"), null);
+  assert.equal(await rowCount("users"), usersBefore);
+  assert.equal((await getLeadById(lead.id)).status, "NEW");
+  assert.equal(await findUserByEmailInternal("atomic@example.test"), null);
 });
 
 test("an existing active STUDENT with the lead's email is reused, not duplicated", async () => {
   await signIn(await makeUser("SUPER_ADMIN", "converter3"));
   const student = await makeUser("STUDENT", "existing");
-  const lead = seedLead({ email: student.email });
-  const usersBefore = rowCount("users");
+  const lead = await seedLead({ email: student.email });
+  const usersBefore = await rowCount("users");
 
   const res = await convertLeadToStudent(lead.id, undefined);
   assert.equal(res.ok, true);
   assert.equal(res.created, false);
   assert.equal(res.userId, student.id);
-  assert.equal(rowCount("users"), usersBefore);
-  assert.equal(getLeadById(lead.id).convertedUserId, student.id);
-  assert.equal(getLeadById(lead.id).status, "CONVERTED");
-  const unchanged = findUserByIdInternal(student.id);
+  assert.equal(await rowCount("users"), usersBefore);
+  assert.equal((await getLeadById(lead.id)).convertedUserId, student.id);
+  assert.equal((await getLeadById(lead.id)).status, "CONVERTED");
+  const unchanged = await findUserByIdInternal(student.id);
   assert.equal(unchanged.role, "STUDENT");
   assert.equal(await verifyPassword("Correct-Horse-9", unchanged.passwordHash), true, "the existing password is untouched");
 });
@@ -468,27 +469,27 @@ test("an existing non-student or inactive account is never converted, changed or
   await signIn(await makeUser("ADMIN", "converter4"));
   for (const role of ["TRAINER", "ADMIN", "SUPER_ADMIN", "COUNSELLOR", "ACCOUNTANT"]) {
     const staff = await makeUser(role, "staffmail");
-    const lead = seedLead({ email: staff.email });
-    const usersBefore = rowCount("users");
+    const lead = await seedLead({ email: staff.email });
+    const usersBefore = await rowCount("users");
     const res = await convertLeadToStudent(lead.id, "Temp-Pass-123");
     assert.equal(res.ok, false, role);
     assert.match(res.reason, /not a student account/);
-    assert.equal(findUserByIdInternal(staff.id).role, role, "role is unchanged");
-    assert.equal(rowCount("users"), usersBefore);
-    assert.equal(getLeadById(lead.id).status, "NEW");
-    assert.equal(getLeadById(lead.id).convertedUserId, null);
+    assert.equal((await findUserByIdInternal(staff.id)).role, role, "role is unchanged");
+    assert.equal(await rowCount("users"), usersBefore);
+    assert.equal((await getLeadById(lead.id)).status, "NEW");
+    assert.equal((await getLeadById(lead.id)).convertedUserId, null);
   }
   const inactive = await makeUser("STUDENT", "off");
-  db.prepare("UPDATE users SET status = 'INACTIVE' WHERE id = ?").run(inactive.id);
-  const lead = seedLead({ email: inactive.email });
+  await tdb.prepare("UPDATE users SET status = 'INACTIVE' WHERE id = ?").run(inactive.id);
+  const lead = await seedLead({ email: inactive.email });
   assert.equal((await convertLeadToStudent(lead.id, "Temp-Pass-123")).ok, false);
-  assert.equal(getLeadById(lead.id).status, "NEW");
+  assert.equal((await getLeadById(lead.id)).status, "NEW");
 });
 
 test("only admins / super admins can convert; counsellors, students, trainers and anonymous cannot", async () => {
   const counsellor = await makeUser("COUNSELLOR", "cns");
-  const lead = seedLead();
-  db.prepare("UPDATE leads SET assigned_to = ? WHERE id = ?").run(counsellor.id, lead.id);
+  const lead = await seedLead();
+  await tdb.prepare("UPDATE leads SET assigned_to = ? WHERE id = ?").run(counsellor.id, lead.id);
 
   await signOut();
   for (const who of [null, "STUDENT", "TRAINER", "ACCOUNTANT", counsellor]) {
@@ -497,9 +498,9 @@ test("only admins / super admins can convert; counsellors, students, trainers an
     assert.equal((await convertLeadToStudent(lead.id, "Temp-Pass-123")).ok, false);
     assert.equal((await convertLeadAction(null, form({ leadId: lead.id, password: "Temp-Pass-123" }))).status, "error");
   }
-  assert.equal(findUserByEmailInternal(lead.email), null, "no account was created for the lead");
-  assert.equal(getLeadById(lead.id).status, "NEW");
-  assert.equal(getLeadById(lead.id).convertedUserId, null);
+  assert.equal(await findUserByEmailInternal(lead.email), null, "no account was created for the lead");
+  assert.equal((await getLeadById(lead.id)).status, "NEW");
+  assert.equal((await getLeadById(lead.id)).convertedUserId, null);
 
   // the counsellor's own lead page offers no conversion
   await signIn(counsellor);
@@ -511,9 +512,9 @@ test("only admins / super admins can convert; counsellors, students, trainers an
 test("full flow: lead -> convert -> enroll -> student LMS -> trainer -> admin", async () => {
   const { batchA } = twoBatches();
   const trainer = await makeUser("TRAINER", "flowtrn");
-  createTrainerBatchAssignment(trainer.id, batchA.id);
+  await createTrainerBatchAssignment(trainer.id, batchA.id);
   const admin = await makeUser("ADMIN", "flow-admin");
-  const lead = seedLead({ courseSlug: batchA.courseSlug, batchId: batchA.id, mode: "online" });
+  const lead = await seedLead({ courseSlug: batchA.courseSlug, batchId: batchA.id, mode: "online" });
 
   await signIn(admin);
   assert.equal((await getLeadDetail(lead.id)).canConvert, true);

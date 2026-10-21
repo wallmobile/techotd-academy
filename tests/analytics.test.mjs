@@ -1,5 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { tdb } from "./tdb.mjs";
+import pg from "pg";
 import crypto from "node:crypto";
 import { db } from "@/lib/db/client";
 import { parseRange, listDays, daysBetween } from "@/lib/analytics/range";
@@ -66,8 +68,8 @@ test("range presets, custom ranges and validation (UTC days, inclusive)", () => 
 
 // ----------------------------------------------------------- aggregation
 test("CRM aggregates: window boundaries, status/source splits, verified conversions vs hand-marked", async () => {
-  const mk = (overrides) =>
-    createLead({
+  const mk = async (overrides) =>
+    await createLead({
       name: "Agg Lead",
       phone: "9876543210",
       email: `agg-${crypto.randomUUID().slice(0, 8)}@example.test`,
@@ -75,25 +77,25 @@ test("CRM aggregates: window boundaries, status/source splits, verified conversi
       consent: true,
       ...overrides,
     });
-  const l1 = mk({ source: "BOOK_DEMO" });
-  const l2 = mk({});
-  const l3 = mk({});
-  const lOutBefore = mk({});
-  const lOutAfter = mk({});
-  const lLastSecond = mk({});
-  db.prepare("UPDATE leads SET created_at = ? WHERE id = ?").run(day(1, "00:00:00"), l1.id); // first second: in
-  db.prepare("UPDATE leads SET created_at = ?, status = 'QUALIFIED' WHERE id = ?").run(day(10), l2.id);
-  db.prepare("UPDATE leads SET created_at = ?, status = 'CONVERTED' WHERE id = ?").run(day(15), l3.id); // hand-marked, no link
-  db.prepare("UPDATE leads SET created_at = ? WHERE id = ?").run("2019-02-28 23:59:59", lOutBefore.id);
-  db.prepare("UPDATE leads SET created_at = ? WHERE id = ?").run("2019-04-01 00:00:00", lOutAfter.id);
-  db.prepare("UPDATE leads SET created_at = ? WHERE id = ?").run(day(31, "23:59:59"), lLastSecond.id); // last second: in
+  const l1 = await mk({ source: "BOOK_DEMO" });
+  const l2 = await mk({});
+  const l3 = await mk({});
+  const lOutBefore = await mk({});
+  const lOutAfter = await mk({});
+  const lLastSecond = await mk({});
+  await tdb.prepare("UPDATE leads SET created_at = ? WHERE id = ?").run(day(1, "00:00:00"), l1.id); // first second: in
+  await tdb.prepare("UPDATE leads SET created_at = ?, status = 'QUALIFIED' WHERE id = ?").run(day(10), l2.id);
+  await tdb.prepare("UPDATE leads SET created_at = ?, status = 'CONVERTED' WHERE id = ?").run(day(15), l3.id); // hand-marked, no link
+  await tdb.prepare("UPDATE leads SET created_at = ? WHERE id = ?").run("2019-02-28 23:59:59", lOutBefore.id);
+  await tdb.prepare("UPDATE leads SET created_at = ? WHERE id = ?").run("2019-04-01 00:00:00", lOutAfter.id);
+  await tdb.prepare("UPDATE leads SET created_at = ? WHERE id = ?").run(day(31, "23:59:59"), lLastSecond.id); // last second: in
 
   const admin = await as("ADMIN", "agg-admin");
   // a real conversion inside the window
-  const conv = mk({});
-  db.prepare("UPDATE leads SET created_at = ? WHERE id = ?").run(day(5), conv.id);
+  const conv = await mk({});
+  await tdb.prepare("UPDATE leads SET created_at = ? WHERE id = ?").run(day(5), conv.id);
   assert.equal((await convertLeadToStudent(conv.id, "Temp-Pass-123")).ok, true);
-  db.prepare("UPDATE leads SET converted_at = ? WHERE id = ?").run(day(6), conv.id);
+  await tdb.prepare("UPDATE leads SET converted_at = ? WHERE id = ?").run(day(6), conv.id);
 
   const r = await getAnalytics(WIN);
   assert.equal(r.crm.total, 5, "l1, l2, l3, lLastSecond and conv are in; the two just-outside rows are out");
@@ -123,15 +125,15 @@ test("enrollment counts use batch enrollments once (no double count with course 
   ];
   assert.ok(rows.every((r) => r.ok));
   await setEnrollmentStatus(rows[2].enrollmentId, "CANCELLED");
-  db.prepare("UPDATE batch_enrollments SET created_at = ? WHERE id IN (?, ?, ?)").run(day(3), rows[0].enrollmentId, rows[1].enrollmentId, rows[2].enrollmentId);
+  await tdb.prepare("UPDATE batch_enrollments SET created_at = ? WHERE id IN (?, ?, ?)").run(day(3), rows[0].enrollmentId, rows[1].enrollmentId, rows[2].enrollmentId);
 
-  const before = db.prepare("SELECT COUNT(*) c FROM course_enrollments").get().c;
+  const before = (await tdb.prepare("SELECT COUNT(*) c FROM course_enrollments").get()).c;
   assert.ok(before >= 1);
   const r = await getAnalytics(WIN);
   assert.equal(r.enrollment.created, 3, "three student+batch enrollments, not the course rows");
   assert.equal(r.enrollment.createdStudents, 2);
   assert.equal(r.dailyEnrollments["2019-03-03"], 3);
-  const snap = db.prepare("SELECT status, COUNT(*) c FROM batch_enrollments GROUP BY status").all();
+  const snap = await tdb.prepare("SELECT status, COUNT(*) c FROM batch_enrollments GROUP BY status").all();
   for (const row of snap) assert.equal(r.enrollment.snapshot[row.status], row.c);
   assert.ok(admin);
 });
@@ -163,14 +165,14 @@ test("finance: collected excludes voided and cancelled, splits manual vs gateway
   assert.equal((await voidPayment({ paymentId: pVoided, reason: "wrong student" })).ok, true);
   await pay(planB, "500", "2019-02-28"); // outside the window
   const planGateway = planC;
-  assert.equal(confirmGatewayPayment({ provider: "fixture", eventId: "evt-a1", providerReference: "txn-a1", feePlanId: planGateway, amount: "200", currency: "INR", paidOn: "2019-03-15" }).ok, true);
-  db.prepare("UPDATE fee_plans SET created_at = ? WHERE id IN (?, ?, ?)").run(day(2), planA, planB, planC);
-  db.prepare("UPDATE payments SET voided_at = ? WHERE id = ?").run(day(14), pVoided);
+  assert.equal((await confirmGatewayPayment({ provider: "fixture", eventId: "evt-a1", providerReference: "txn-a1", feePlanId: planGateway, amount: "200", currency: "INR", paidOn: "2019-03-15" })).ok, true);
+  await tdb.prepare("UPDATE fee_plans SET created_at = ? WHERE id IN (?, ?, ?)").run(day(2), planA, planB, planC);
+  await tdb.prepare("UPDATE payments SET voided_at = ? WHERE id = ?").run(day(14), pVoided);
 
   // a cancelled plan with no payments is excluded from assigned/collected
   const planX = await mkPlan("999");
   await cancelFee({ feePlanId: planX, reason: "withdrawn" });
-  db.prepare("UPDATE fee_plans SET created_at = ? WHERE id = ?").run(day(2), planX);
+  await tdb.prepare("UPDATE fee_plans SET created_at = ? WHERE id = ?").run(day(2), planX);
 
   const r = await getAnalytics(WIN);
   const f = r.finance;
@@ -190,8 +192,8 @@ test("finance: collected excludes voided and cancelled, splits manual vs gateway
   assert.ok(p1 && p2);
 
   // a different currency is reported separately, never summed into INR
-  db.prepare("UPDATE fee_plans SET currency = 'USD' WHERE id = ?").run(planC);
-  db.prepare("UPDATE payments SET currency = 'USD' WHERE fee_plan_id = ?").run(planC);
+  await tdb.prepare("UPDATE fee_plans SET currency = 'USD' WHERE id = ?").run(planC);
+  await tdb.prepare("UPDATE payments SET currency = 'USD' WHERE fee_plan_id = ?").run(planC);
   const r2 = await getAnalytics(WIN);
   assert.equal(inr(r2.finance.collected, "MANUAL").amount, (3000 + 1000) * 100);
   assert.equal(r2.finance.collected.find((x) => x.currency === "USD").amount, 200 * 100);
@@ -205,7 +207,7 @@ test("certificates and placement: manual vs automatic issuance; SELECTED is not 
   const e = await createEnrollment({ studentUserId: student.id, courseSlug: batchA.courseSlug, batchId: batchA.id });
   const c = await issueCertificate({ enrollmentId: e.enrollmentId, mode: "MANUAL", approvalNote: "confirmed by the trainer offline" });
   assert.equal(c.ok, true);
-  db.prepare("UPDATE certificates SET issued_at = ? WHERE id = ?").run(day(8), c.certificateId);
+  await tdb.prepare("UPDATE certificates SET issued_at = ? WHERE id = ?").run(day(8), c.certificateId);
   const r = await getAnalytics(WIN);
   assert.equal(r.certificates.issued, 1);
   assert.equal(r.certificates.issuedManual, 1);
@@ -214,7 +216,7 @@ test("certificates and placement: manual vs automatic issuance; SELECTED is not 
 
   // placement
   const jobId = crypto.randomUUID();
-  db.prepare(
+  await tdb.prepare(
     "INSERT INTO jobs (id, title, company_name, description, employment_type, work_mode, status, published_at) VALUES (?, 'T', 'C', 'D', 'FULL_TIME', 'ONSITE', 'PUBLISHED', ?)"
   ).run(jobId, day(4));
   const mkApp = (status, confirmedAt = null) => {
@@ -223,9 +225,9 @@ test("certificates and placement: manual vs automatic issuance; SELECTED is not 
   };
   const apps = [mkApp("APPLIED"), mkApp("SELECTED"), mkApp("SELECTED", day(20))];
   for (const a of apps) {
-    const user = db.prepare("INSERT INTO users (id, name, email, password_hash, role) VALUES (?, 'P', ?, 'x', 'STUDENT')");
-    user.run(a.u, `${a.u}@example.test`);
-    db.prepare(
+    const user = tdb.prepare("INSERT INTO users (id, name, email, password_hash, role) VALUES (?, 'P', ?, 'x', 'STUDENT')");
+    await user.run(a.u, `${a.u}@example.test`);
+    await tdb.prepare(
       "INSERT INTO job_applications (id, job_id, student_user_id, status, applied_at, placement_confirmed_at) VALUES (?, ?, ?, ?, ?, ?)"
     ).run(a.id, jobId, a.u, a.status, day(9), a.confirmedAt);
   }
@@ -283,12 +285,12 @@ test("a counsellor's CRM figures cover only their assigned leads and the unassig
   const mgr = await makeUser("ADMIN", "scope-mgr");
   const c1 = await makeUser("COUNSELLOR", "scope-c1");
   const c2 = await makeUser("COUNSELLOR", "scope-c2");
-  const mk = () =>
-    createLead({ name: "Scope", phone: "9876543210", email: `scope-${crypto.randomUUID().slice(0, 8)}@example.test`, source: "ENQUIRY", consent: true });
-  const mine = mk();
-  const theirs = mk();
-  const queue = mk();
-  for (const l of [mine, theirs, queue]) db.prepare("UPDATE leads SET created_at = ? WHERE id = ?").run("2018-06-15 10:00:00", l.id);
+  const mk = async () =>
+    await createLead({ name: "Scope", phone: "9876543210", email: `scope-${crypto.randomUUID().slice(0, 8)}@example.test`, source: "ENQUIRY", consent: true });
+  const mine = await mk();
+  const theirs = await mk();
+  const queue = await mk();
+  for (const l of [mine, theirs, queue]) await tdb.prepare("UPDATE leads SET created_at = ? WHERE id = ?").run("2018-06-15 10:00:00", l.id);
   await signIn(mgr);
   await assignLead(mine.id, c1.id);
   await assignLead(theirs.id, c2.id);
@@ -354,7 +356,7 @@ test("export: admins only, aggregates only, bounded, and refuses invalid ranges"
 });
 
 test("the export endpoint enforces the same rules and sends safe headers", async () => {
-  const call = (qs) => exportRoute(new Request(`http://localhost/admin/analytics/export?${qs}`));
+  const call = async (qs) => await exportRoute(new Request(`http://localhost/admin/analytics/export?${qs}`));
   const qs = "type=summary&preset=custom&from=2019-03-01&to=2019-03-31";
   await signOut();
   assert.equal((await call(qs)).status, 403);
@@ -373,12 +375,19 @@ test("the export endpoint enforces the same rules and sends safe headers", async
 });
 
 // ------------------------------------------------------------ performance
-test("range aggregations use the date indexes (query plan)", () => {
-  const plan = (sql) => db.prepare(`EXPLAIN QUERY PLAN ${sql}`).all({ fromTs: "2019-03-01 00:00:00", toTs: "2019-04-01 00:00:00", from: "2019-03-01", to: "2019-03-31" })
-    .map((r) => r.detail)
-    .join(" | ");
-  assert.match(plan("SELECT COUNT(*) FROM leads WHERE created_at >= @fromTs AND created_at < @toTs"), /idx_leads_created_at/);
-  assert.match(plan("SELECT COUNT(*) FROM payments WHERE paid_on >= @from AND paid_on <= @to"), /idx_payments_paid_on/);
-  assert.match(plan("SELECT COUNT(*) FROM batch_enrollments WHERE created_at >= @fromTs AND created_at < @toTs"), /idx_batch_enrollments_created_at/);
-  assert.match(plan("SELECT COUNT(*) FROM job_applications WHERE applied_at >= @fromTs AND applied_at < @toTs"), /idx_job_applications_applied_at/);
+test("range aggregations can use the date indexes (query plan, with sequential scans disabled so a tiny table can't hide a missing index)", async () => {
+  const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await client.connect();
+  try {
+    await client.query("SET enable_seqscan = off");
+    const plan = async (sql, params) => (await client.query(`EXPLAIN ${sql}`, params)).rows.map((r) => r["QUERY PLAN"]).join(" | ");
+    const ts = ["2019-03-01 00:00:00", "2019-04-01 00:00:00"];
+    const days = ["2019-03-01", "2019-03-31"];
+    assert.match(await plan("SELECT COUNT(*) FROM leads WHERE created_at >= $1 AND created_at < $2", ts), /idx_leads_created_at/);
+    assert.match(await plan("SELECT COUNT(*) FROM payments WHERE paid_on >= $1 AND paid_on <= $2", days), /idx_payments_paid_on/);
+    assert.match(await plan("SELECT COUNT(*) FROM batch_enrollments WHERE created_at >= $1 AND created_at < $2", ts), /idx_batch_enrollments_created_at/);
+    assert.match(await plan("SELECT COUNT(*) FROM job_applications WHERE applied_at >= $1 AND applied_at < $2", ts), /idx_job_applications_applied_at/);
+  } finally {
+    await client.end();
+  }
 });

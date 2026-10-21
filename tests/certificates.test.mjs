@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { tdb, failAuditInsert, removeAuditFailure } from "./tdb.mjs";
 import { db } from "@/lib/db/client";
 import {
   getEligibility,
@@ -30,7 +31,7 @@ function form(values) {
   return fd;
 }
 
-const count = (t) => db.prepare(`SELECT COUNT(*) AS c FROM ${t}`).get().c;
+const count = async (t) => (await tdb.prepare(`SELECT COUNT(*) AS c FROM ${t}`).get()).c;
 
 // An enrolled student; `complete` marks every lesson done and the enrollment COMPLETED.
 async function student({ complete = false, label = "cert" } = {}) {
@@ -40,11 +41,11 @@ async function student({ complete = false, label = "cert" } = {}) {
   await signIn(admin);
   const enr = await createEnrollment({ studentUserId: user.id, courseSlug: batchA.courseSlug, batchId: batchA.id });
   assert.equal(enr.ok, true);
-  const profile = getOrCreateStudentProfile(user.id);
+  const profile = await getOrCreateStudentProfile(user.id);
   if (complete) {
     const course = getCourseBySlug(batchA.courseSlug);
     for (const lesson of getCourseCurriculum(course).flatLessons) {
-      markLessonComplete(profile.id, course.slug, lesson.moduleIndex, lesson.itemIndex);
+      await markLessonComplete(profile.id, course.slug, lesson.moduleIndex, lesson.itemIndex);
     }
     await setEnrollmentStatus(enr.enrollmentId, "COMPLETED");
   }
@@ -60,7 +61,7 @@ test("a student who completed lessons and was marked COMPLETED is auto-eligible 
 
   const res = await issueCertificate({ enrollmentId: s.enrollmentId, mode: "AUTO" });
   assert.equal(res.ok, true);
-  const row = db.prepare("SELECT * FROM certificates WHERE id = ?").get(res.certificateId);
+  const row = await tdb.prepare("SELECT * FROM certificates WHERE id = ?").get(res.certificateId);
   assert.equal(row.status, "ACTIVE");
   assert.equal(row.issuance_basis, "AUTO_COMPLETE");
   assert.equal(row.student_id, s.profile.id);
@@ -70,7 +71,7 @@ test("a student who completed lessons and was marked COMPLETED is auto-eligible 
   assert.match(row.certificate_number, /^TOA-\d{4}-[0-9A-F]{10}$/);
   assert.ok(row.verification_token.length >= 20);
   assert.equal(
-    db.prepare("SELECT action FROM audit_log WHERE entity_id = ?").get(res.certificateId).action,
+    (await tdb.prepare("SELECT action FROM audit_log WHERE entity_id = ?").get(res.certificateId)).action,
     "CERTIFICATE_ISSUED"
   );
 });
@@ -83,11 +84,11 @@ test("an ineligible student can't be issued automatically; completion facts are 
   assert.equal(e.checks.find((c) => c.key === "lessons_completed").passed, false);
   assert.equal(e.checks.find((c) => c.key === "enrollment_completed").passed, false);
 
-  const before = count("certificates");
+  const before = await count("certificates");
   const res = await issueCertificate({ enrollmentId: noProgress.enrollmentId, mode: "AUTO" });
   assert.equal(res.ok, false);
   assert.equal(res.reason, "not_eligible");
-  assert.equal(count("certificates"), before);
+  assert.equal(await count("certificates"), before);
 
   // lessons done but enrollment not marked completed -> still not eligible
   const half = await student({ complete: true, label: "half" });
@@ -103,10 +104,10 @@ test("manual approval needs a real reason, is recorded as manual, and never as a
   for (const note of [undefined, "", "   ", "short", "x".repeat(501)]) {
     assert.equal((await issueCertificate({ enrollmentId: s.enrollmentId, mode: "MANUAL", approvalNote: note })).ok, false);
   }
-  assert.equal(count("certificates") >= 0, true);
+  assert.equal(await count("certificates") >= 0, true);
   const res = await issueCertificate({ enrollmentId: s.enrollmentId, mode: "MANUAL", approvalNote: "Completed offline project review on 2026-10-01" });
   assert.equal(res.ok, true);
-  const row = db.prepare("SELECT issuance_basis, approval_note, issued_by FROM certificates WHERE id = ?").get(res.certificateId);
+  const row = await tdb.prepare("SELECT issuance_basis, approval_note, issued_by FROM certificates WHERE id = ?").get(res.certificateId);
   assert.equal(row.issuance_basis, "MANUAL_APPROVAL");
   assert.equal(row.approval_note, "Completed offline project review on 2026-10-01");
   assert.equal(row.issued_by, s.admin.id);
@@ -139,18 +140,18 @@ test("duplicate issuance is prevented; a revoked certificate can be re-issued; n
   assert.equal(b.reason, "already_issued");
   assert.equal((await issueCertificate({ enrollmentId: s.enrollmentId, mode: "MANUAL", approvalNote: "second attempt reason" })).reason, "already_issued");
   assert.equal(
-    db.prepare("SELECT COUNT(*) AS c FROM certificates WHERE student_id = ? AND course_slug = ? AND status = 'ACTIVE'").get(s.profile.id, s.courseSlug).c,
+    (await tdb.prepare("SELECT COUNT(*) AS c FROM certificates WHERE student_id = ? AND course_slug = ? AND status = 'ACTIVE'").get(s.profile.id, s.courseSlug)).c,
     1
   );
   // the database itself also refuses a second ACTIVE row
-  assert.throws(() =>
-    db
+  await assert.rejects(async () =>
+    await tdb
       .prepare("INSERT INTO certificates (id, student_id, course_slug, certificate_number, status, verification_token) VALUES (?, ?, ?, ?, 'ACTIVE', ?)")
       .run("dup-direct", s.profile.id, s.courseSlug, "TOA-DUP-DIRECT", "tok-dup-direct-123456789")
   );
   // number uniqueness enforced by the schema
-  assert.throws(() =>
-    db
+  await assert.rejects(async () =>
+    await tdb
       .prepare("INSERT INTO certificates (id, student_id, course_slug, certificate_number, status) VALUES (?, ?, ?, ?, 'REVOKED')")
       .run("dup-number", s.profile.id, s.courseSlug, a.certificateNumber)
   );
@@ -159,7 +160,7 @@ test("duplicate issuance is prevented; a revoked certificate can be re-issued; n
   const again = await issueCertificate({ enrollmentId: s.enrollmentId, mode: "AUTO" });
   assert.equal(again.ok, true, "a new certificate may follow a revoked one");
   assert.notEqual(again.certificateNumber, a.certificateNumber);
-  const tokens = db.prepare("SELECT verification_token FROM certificates WHERE student_id = ?").all(s.profile.id).map((r) => r.verification_token);
+  const tokens = (await tdb.prepare("SELECT verification_token FROM certificates WHERE student_id = ?").all(s.profile.id)).map((r) => r.verification_token);
   assert.equal(new Set(tokens).size, tokens.length);
 });
 
@@ -171,7 +172,7 @@ test("only admins / super admins can issue, revoke, list or download; direct act
   const target = await student({ complete: true, label: "authz2" });
 
   await signOut();
-  const before = [count("certificates"), count("audit_log")];
+  const before = [await count("certificates"), await count("audit_log")];
   for (const role of [null, "STUDENT", "TRAINER", "COUNSELLOR", "ACCOUNTANT", "CONTENT_MANAGER", "PLACEMENT_MANAGER"]) {
     if (role) await signIn(await makeUser(role, "intruder"));
     assert.equal((await issueCertificate({ enrollmentId: target.enrollmentId, mode: "AUTO" })).ok, false);
@@ -186,8 +187,8 @@ test("only admins / super admins can issue, revoke, list or download; direct act
     assert.equal(await getCertificateFormData({}), null);
     assert.equal((await getCertificatePdfForAdmin(issued.certificateId)).ok, false);
   }
-  assert.deepEqual([count("certificates"), count("audit_log")], before);
-  assert.equal(db.prepare("SELECT status FROM certificates WHERE id = ?").get(issued.certificateId).status, "ACTIVE");
+  assert.deepEqual([await count("certificates"), await count("audit_log")], before);
+  assert.equal((await tdb.prepare("SELECT status FROM certificates WHERE id = ?").get(issued.certificateId)).status, "ACTIVE");
 });
 
 // -------------------------------------------------------- student ownership
@@ -222,7 +223,7 @@ test("students see and download only their own certificates; revoked ones are sh
   const stillActive = (await getMyCertificates()).length;
   assert.equal((await revokeCertificateAction(null, form({ certificateId: cb.certificateId, reason: "x" }))).status, "error");
   assert.equal(stillActive, 1);
-  assert.equal(db.prepare("SELECT status FROM certificates WHERE id = ?").get(cb.certificateId).status, "ACTIVE");
+  assert.equal((await tdb.prepare("SELECT status FROM certificates WHERE id = ?").get(cb.certificateId)).status, "ACTIVE");
 });
 
 test("a student with no certificates sees a real empty state", async () => {
@@ -258,7 +259,7 @@ test("the generated certificate is a real, well-formed PDF containing the actual
   assert.ok(text.includes(issued.certificateNumber));
   assert.ok(text.includes("Certificate of Completion"));
   assert.ok(text.includes("TechOTD Academy"));
-  assert.ok(text.includes(verificationUrl(db.prepare("SELECT verification_token t FROM certificates WHERE id = ?").get(issued.certificateId).t)));
+  assert.ok(text.includes(verificationUrl((await tdb.prepare("SELECT verification_token t FROM certificates WHERE id = ?").get(issued.certificateId)).t)));
   // no invented endorsements
   for (const invented of ["Director", "Accredited", "Government", "University"]) assert.ok(!text.includes(invented), invented);
 });
@@ -296,10 +297,10 @@ test("public verification shows minimal information; revoked, unknown and malfor
   await signIn(s.admin);
   const issued = await issueCertificate({ enrollmentId: s.enrollmentId, mode: "MANUAL", approvalNote: "manual basis for the private note" }).catch(() => null);
   const cert = issued?.ok ? issued : await issueCertificate({ enrollmentId: s.enrollmentId, mode: "AUTO" });
-  const token = db.prepare("SELECT verification_token t FROM certificates WHERE id = ?").get(cert.certificateId).t;
+  const token = (await tdb.prepare("SELECT verification_token t FROM certificates WHERE id = ?").get(cert.certificateId)).t;
 
   await signOut(); // verification needs no session at all
-  const valid = getPublicVerification(token);
+  const valid = await getPublicVerification(token);
   assert.equal(valid.valid, true);
   assert.equal(valid.status, "VALID");
   assert.equal(valid.certificateNumber, cert.certificateNumber);
@@ -311,13 +312,13 @@ test("public verification shows minimal information; revoked, unknown and malfor
 
   // unknown / malformed / hostile identifiers
   for (const bad of ["", "short", "x".repeat(65), "../../etc/passwd", "' OR 1=1 --", cert.certificateNumber, cert.certificateId, null, undefined, {}]) {
-    assert.equal(getPublicVerification(bad), null, String(bad));
+    assert.equal(await getPublicVerification(bad), null, String(bad));
   }
 
   await signIn(s.admin);
   await revokeCertificate({ certificateId: cert.certificateId, reason: "Issued to the wrong learner" });
   await signOut();
-  const revoked = getPublicVerification(token);
+  const revoked = await getPublicVerification(token);
   assert.equal(revoked.valid, false);
   assert.equal(revoked.status, "REVOKED");
   assert.ok(!JSON.stringify(revoked).includes("wrong learner"), "the revocation reason stays private");
@@ -331,7 +332,7 @@ test("revocation needs a reason, keeps the record and history, and can't be repe
   assert.equal((await revokeCertificate({ certificateId: "missing", reason: "x" })).reason, "not_found");
   assert.equal((await revokeCertificate({ certificateId: c.certificateId, reason: "Duplicate issuance" })).ok, true);
   assert.equal((await revokeCertificate({ certificateId: c.certificateId, reason: "again" })).reason, "already_revoked");
-  const row = db.prepare("SELECT * FROM certificates WHERE id = ?").get(c.certificateId);
+  const row = await tdb.prepare("SELECT * FROM certificates WHERE id = ?").get(c.certificateId);
   assert.equal(row.status, "REVOKED");
   assert.equal(row.revoked_reason, "Duplicate issuance");
   assert.equal(row.revoked_by, s.admin.id);
@@ -345,15 +346,14 @@ test("revocation needs a reason, keeps the record and history, and can't be repe
 test("issuance is atomic: a failed audit write leaves no certificate behind", async () => {
   const s = await student({ complete: true, label: "atomic" });
   await signIn(s.admin);
-  db.exec(`CREATE TRIGGER fail_cert_audit BEFORE INSERT ON audit_log WHEN NEW.action = 'CERTIFICATE_ISSUED'
-           BEGIN SELECT RAISE(ABORT, 'simulated failure'); END;`);
-  const before = count("certificates");
+  await failAuditInsert("fail_cert_audit", "CERTIFICATE_ISSUED");
+  const before = await count("certificates");
   try {
-    await assert.rejects(() => issueCertificate({ enrollmentId: s.enrollmentId, mode: "AUTO" }));
+    await assert.rejects(async () => await issueCertificate({ enrollmentId: s.enrollmentId, mode: "AUTO" }));
   } finally {
-    db.exec("DROP TRIGGER fail_cert_audit");
+    await removeAuditFailure("fail_cert_audit");
   }
-  assert.equal(count("certificates"), before);
+  assert.equal(await count("certificates"), before);
   assert.equal((await issueCertificate({ enrollmentId: s.enrollmentId, mode: "AUTO" })).ok, true);
 });
 
@@ -372,7 +372,7 @@ test("certificate list: search, status filter, sort, pagination and injection-sa
     sort: "newest",
     page: 1,
   });
-  const before = count("certificates");
+  const before = await count("certificates");
   await getCertificatesPage(parseCertificateParams({ q: "'; DROP TABLE certificates; --" }));
-  assert.equal(count("certificates"), before);
+  assert.equal(await count("certificates"), before);
 });

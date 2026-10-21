@@ -33,7 +33,7 @@ function tryBoot(env, port) {
   return new Promise((resolve) => {
     const p = spawn(process.execPath, ["node_modules/next/dist/bin/next", "start", "-p", String(port)], {
       cwd: ROOT,
-      env: { ...process.env, NODE_ENV: "production", DATABASE_URL: `file:${path.join(dir, "boot.db").split(path.sep).join("/")}`, ...env },
+      env: { ...process.env, NODE_ENV: "production", DATABASE_URL: "postgres://boot:bootpw@127.0.0.1:1/boot", ...env },
       stdio: ["ignore", "pipe", "pipe"],
     });
     let log = "";
@@ -74,8 +74,8 @@ test("DP1 /api/health reports ok with a real database round trip, is uncached, p
   assert.equal((await fetch(stack.base + "/api/health", { method: "HEAD" })).status, 200);
 
   // when the database is unusable it says so, with no internals
-  const d = openDb(stack, { readonly: false });
-  d.exec("ALTER TABLE sessions RENAME TO sessions_hidden");
+  const d = openDb(stack);
+  await d.exec("ALTER TABLE sessions RENAME TO sessions_hidden");
   try {
     const bad = await fetch(stack.base + "/api/health");
     assert.equal(bad.status, 503);
@@ -83,7 +83,7 @@ test("DP1 /api/health reports ok with a real database round trip, is uncached, p
     assert.deepEqual(JSON.parse(body), { status: "unavailable" });
     assert.ok(!/sessions|sqlite|no such table|at \w+/i.test(body));
   } finally {
-    d.exec("ALTER TABLE sessions_hidden RENAME TO sessions");
+    await d.exec("ALTER TABLE sessions_hidden RENAME TO sessions");
     d.close();
   }
   assert.equal((await fetch(stack.base + "/api/health")).status, 200, "recovers when the database does");
@@ -95,7 +95,7 @@ test("DP2 production refuses to start on dangerous configuration, with a clear m
   const cases = [
     [{ NEXT_PUBLIC_SITE_URL: "http://staging.example.test" }, /plain http:\/\/.*nobody could sign in/],
     [{ NEXT_PUBLIC_SITE_URL: "staging.example.test" }, /not a valid absolute URL/],
-    [{ NEXT_PUBLIC_SITE_URL: "https://staging.example.test", DATABASE_URL: "postgresql://appuser:Sup3rS3cretPw@db.internal/app" }, /SQLite/],
+    [{ NEXT_PUBLIC_SITE_URL: "https://staging.example.test", DATABASE_URL: "mysql://appuser:Sup3rS3cretPw@db.internal/app" }, /PostgreSQL/],
   ];
   let port = 3311;
   for (const [env, re] of cases) {

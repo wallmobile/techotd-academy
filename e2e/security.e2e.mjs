@@ -41,13 +41,13 @@ test("S1 CSRF: a Server Action POST with a foreign Origin is rejected and change
   const form = 'form:has(input[name="emailNotifications"])';
   const fields = await actionFields(student.page, form);
   assert.ok(Object.keys(fields).some((k) => k.startsWith("$ACTION")), "server action fields present");
-  const read = () => {
+  const read = async () => {
     const d = openDb(stack);
-    const v = d.prepare("SELECT email_notifications e FROM users WHERE id = ?").get(stack.data.users.student.id).e;
+    const v = (await d.prepare("SELECT email_notifications e FROM users WHERE id = ?").get(stack.data.users.student.id)).e;
     d.close();
     return v;
   };
-  assert.equal(read(), 1);
+  assert.equal(await read(), 1);
 
   // no emailNotifications value => the action would switch email OFF
   const forged = await student.context.request.post(stack.base + "/student/notifications", {
@@ -56,7 +56,7 @@ test("S1 CSRF: a Server Action POST with a foreign Origin is rejected and change
     maxRedirects: 0,
   });
   assert.notEqual(forged.status(), 200, "cross-origin action call must not succeed");
-  assert.equal(read(), 1, "the forged request changed nothing");
+  assert.equal(await read(), 1, "the forged request changed nothing");
 
   const genuine = await student.context.request.post(stack.base + "/student/notifications", {
     multipart: fields,
@@ -64,7 +64,7 @@ test("S1 CSRF: a Server Action POST with a foreign Origin is rejected and change
     maxRedirects: 0,
   });
   assert.ok(genuine.status() < 400, `same-origin works (${genuine.status()})`);
-  assert.equal(read(), 0, "the genuine request took effect");
+  assert.equal(await read(), 0, "the genuine request took effect");
 });
 
 test("S2 login throttling cannot be dodged by forging X-Forwarded-For (a trusted proxy appends the real address last)", async () => {
@@ -79,7 +79,7 @@ test("S2 login throttling cannot be dodged by forging X-Forwarded-For (a trusted
       await page.fill("#password", password);
       await page.click("button[type=submit]");
       await page.getByText(/Invalid email or password|Too many sign-in attempts/).first().waitFor({ timeout: 8000 });
-      return bodyText(page);
+      return await bodyText(page);
     };
     let last = "";
     for (let i = 0; i < 10; i += 1) last = await attempt(`10.0.${i}.1`, `wrong-${i}`);
@@ -130,7 +130,7 @@ test("S4 hostile input: malformed ids, SQL metacharacters and script text produc
     assert.ok(!html.includes("<script>alert(1)</script>"), `${p} reflected markup unescaped`);
   }
   const d = openDb(stack);
-  assert.ok(d.prepare("SELECT COUNT(*) c FROM users").get().c >= 9, "users table intact");
+  assert.ok((await d.prepare("SELECT COUNT(*) c FROM users").get()).c >= 9, "users table intact");
   d.close();
   admin.assertClean("hostile input");
 });
@@ -161,7 +161,7 @@ test("S6 the session cookie never reaches client scripts and survives no JS acce
 test("S7 cross-user object access: student cannot read staff pages or another student's records by id", async () => {
   const s1 = await as("student");
   const d = openDb(stack);
-  const target = d.prepare("SELECT id FROM users WHERE id = ?").get(stack.data.users.student2.id);
+  const target = await d.prepare("SELECT id FROM users WHERE id = ?").get(stack.data.users.student2.id);
   d.close();
   for (const p of [`/admin/users/${target.id}`, `/admin/students/${target.id}`, `/trainer/students/${target.id}`]) {
     await s1.goto(p);

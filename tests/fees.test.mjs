@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { tdb, failAuditInsert, removeAuditFailure } from "./tdb.mjs";
 import crypto from "node:crypto";
 import { db } from "@/lib/db/client";
 import {
@@ -40,7 +41,7 @@ async function redirectTarget(fn) {
   return null;
 }
 
-const count = (table) => db.prepare(`SELECT COUNT(*) AS c FROM ${table}`).get().c;
+const count = async (table) => (await tdb.prepare(`SELECT COUNT(*) AS c FROM ${table}`).get()).c;
 const today = new Date().toISOString().slice(0, 10);
 const yesterday = new Date(Date.now() - 86_400_000 * 2).toISOString().slice(0, 10);
 
@@ -64,8 +65,8 @@ async function withFee({ total = "10000", discount = "0", dueDate = "", label } 
   return { ...ctx, accountant, feePlanId: fee.feePlanId };
 }
 
-const pay = (feePlanId, amount, extra = {}) =>
-  recordManualPayment({ feePlanId, amount, method: "CASH", paidOn: today, note: "", idempotencyKey: crypto.randomBytes(9).toString("base64url"), ...extra });
+const pay = async (feePlanId, amount, extra = {}) =>
+  await recordManualPayment({ feePlanId, amount, method: "CASH", paidOn: today, note: "", idempotencyKey: crypto.randomBytes(9).toString("base64url"), ...extra });
 
 // -------------------------------------------------------------------- money
 test("money parsing is exact integer minor units; floats and malformed input are rejected", () => {
@@ -86,7 +87,7 @@ test("a finance user can assign a fee to a real enrollment; amounts are stored a
   await signIn(await makeUser("ACCOUNTANT", "fin"));
   const res = await assignFee({ enrollmentId: ctx.enrollmentId, currency: "INR", total: "25000.50", discount: "1000", dueDate: "2030-01-15", note: "Instalment plan" });
   assert.equal(res.ok, true);
-  const plan = getFeePlanById(res.feePlanId);
+  const plan = await getFeePlanById(res.feePlanId);
   assert.equal(plan.totalMinor, 2500050);
   assert.equal(plan.discountMinor, 100000);
   assert.equal(plan.netMinor, 2400050);
@@ -96,7 +97,7 @@ test("a finance user can assign a fee to a real enrollment; amounts are stored a
   assert.equal(plan.courseSlug, ctx.batch.courseSlug);
   assert.equal(plan.batchId, ctx.batch.id);
   assert.equal(plan.studentUserId, ctx.student.id);
-  const audit = db.prepare("SELECT action, actor_user_id FROM audit_log WHERE entity_id = ?").all(res.feePlanId);
+  const audit = await tdb.prepare("SELECT action, actor_user_id FROM audit_log WHERE entity_id = ?").all(res.feePlanId);
   assert.equal(audit[0].action, "FEE_PLAN_CREATED");
   assert.ok(audit[0].actor_user_id);
 });
@@ -112,7 +113,7 @@ test("admins and super admins may assign fees too", async () => {
 test("invalid fee input is rejected and writes nothing", async () => {
   const ctx = await enrolled();
   await signIn(await makeUser("ACCOUNTANT", "fin"));
-  const before = count("fee_plans");
+  const before = await count("fee_plans");
   const base = { enrollmentId: ctx.enrollmentId, currency: "INR", total: "1000", discount: "0", dueDate: "", note: "" };
   const cases = [
     [{ total: "abc" }, "amount_invalid"],
@@ -134,7 +135,7 @@ test("invalid fee input is rejected and writes nothing", async () => {
     assert.equal(res.ok, false, JSON.stringify(override));
     assert.equal(res.reason, reason, JSON.stringify(override));
   }
-  assert.equal(count("fee_plans"), before);
+  assert.equal(await count("fee_plans"), before);
 });
 
 test("cancelled enrollments and inactive students can't be assigned a fee; duplicates are refused", async () => {
@@ -146,7 +147,7 @@ test("cancelled enrollments and inactive students can't be assigned a fee; dupli
   assert.equal((await assignFee({ enrollmentId: cancelled.enrollmentId, ...args })).reason, "enrollment_cancelled");
 
   const inactive = await enrolled("inactive");
-  db.prepare("UPDATE users SET status = 'INACTIVE' WHERE id = ?").run(inactive.student.id);
+  await tdb.prepare("UPDATE users SET status = 'INACTIVE' WHERE id = ?").run(inactive.student.id);
   await signIn(await makeUser("ACCOUNTANT", "fin2"));
   assert.equal((await assignFee({ enrollmentId: inactive.enrollmentId, ...args })).reason, "student_inactive");
 
@@ -155,12 +156,12 @@ test("cancelled enrollments and inactive students can't be assigned a fee; dupli
   assert.equal((await assignFee({ enrollmentId: dup.enrollmentId, ...args })).ok, true);
   const second = await assignFee({ enrollmentId: dup.enrollmentId, ...args });
   assert.equal(second.reason, "duplicate");
-  assert.equal(db.prepare("SELECT COUNT(*) AS c FROM fee_plans WHERE enrollment_id = ?").get(dup.enrollmentId).c, 1);
+  assert.equal((await tdb.prepare("SELECT COUNT(*) AS c FROM fee_plans WHERE enrollment_id = ?").get(dup.enrollmentId)).c, 1);
 });
 
 test("unauthorized roles can't see or change fees — by function or by direct action call", async () => {
   const ctx = await withFee({ total: "5000" });
-  const before = [count("fee_plans"), count("payments"), count("audit_log")];
+  const before = [await count("fee_plans"), await count("payments"), await count("audit_log")];
   const other = await enrolled("target2");
 
   await signOut();
@@ -183,7 +184,7 @@ test("unauthorized roles can't see or change fees — by function or by direct a
     assert.equal(await getFeeSummary(), null);
     assert.equal(await getFeeFormData({}), null);
   }
-  assert.deepEqual([count("fee_plans"), count("payments"), count("audit_log")], before);
+  assert.deepEqual([await count("fee_plans"), await count("payments"), await count("audit_log")], before);
 });
 
 test("page guard: anonymous, student, trainer, counsellor are redirected from finance routes", async () => {
@@ -204,29 +205,29 @@ test("page guard: anonymous, student, trainer, counsellor are redirected from fi
 // ------------------------------------------------------------------ payments
 test("partial then full payment: balances and derived status are exact", async () => {
   const f = await withFee({ total: "100.10", discount: "0.10" }); // net 100.00
-  let plan = getFeePlanById(f.feePlanId);
+  let plan = await getFeePlanById(f.feePlanId);
   assert.equal(plan.netMinor, 10000);
   assert.equal(plan.status, "PENDING");
 
   assert.equal((await pay(f.feePlanId, "33.33")).ok, true);
-  plan = getFeePlanById(f.feePlanId);
+  plan = await getFeePlanById(f.feePlanId);
   assert.equal(plan.paidMinor, 3333);
   assert.equal(plan.outstandingMinor, 6667);
   assert.equal(plan.status, "PARTIALLY_PAID");
 
   assert.equal((await pay(f.feePlanId, "66.67")).ok, true);
-  plan = getFeePlanById(f.feePlanId);
+  plan = await getFeePlanById(f.feePlanId);
   assert.equal(plan.paidMinor, 10000);
   assert.equal(plan.outstandingMinor, 0);
   assert.equal(plan.status, "PAID");
 
   assert.equal((await pay(f.feePlanId, "0.01")).reason, "already_paid");
-  assert.equal(db.prepare("SELECT COUNT(*) AS c FROM payments WHERE fee_plan_id = ?").get(f.feePlanId).c, 2);
+  assert.equal((await tdb.prepare("SELECT COUNT(*) AS c FROM payments WHERE fee_plan_id = ?").get(f.feePlanId)).c, 2);
 });
 
 test("overpayment, bad amounts, bad methods and future dates are rejected", async () => {
   const f = await withFee({ total: "1000" });
-  const before = count("payments");
+  const before = await count("payments");
   assert.equal((await pay(f.feePlanId, "1000.01")).reason, "exceeds_outstanding");
   assert.equal((await pay(f.feePlanId, "0")).reason, "payment_amount_invalid");
   assert.equal((await pay(f.feePlanId, "-10")).reason, "payment_amount_invalid");
@@ -236,22 +237,22 @@ test("overpayment, bad amounts, bad methods and future dates are rejected", asyn
   assert.equal((await pay(f.feePlanId, "10", { paidOn: "2999-01-01" })).reason, "date_invalid");
   assert.equal((await pay(f.feePlanId, "10", { paidOn: "garbage" })).reason, "date_invalid");
   assert.equal((await pay("missing-plan", "10")).reason, "not_found");
-  assert.equal(count("payments"), before);
+  assert.equal(await count("payments"), before);
 });
 
 test("derived status: OVERDUE when past due with a balance; PAID when fully paid even if past due", async () => {
   const f = await withFee({ total: "500", dueDate: yesterday });
-  assert.equal(getFeePlanById(f.feePlanId).status, "OVERDUE");
+  assert.equal((await getFeePlanById(f.feePlanId)).status, "OVERDUE");
   await pay(f.feePlanId, "100");
-  assert.equal(getFeePlanById(f.feePlanId).status, "OVERDUE");
+  assert.equal((await getFeePlanById(f.feePlanId)).status, "OVERDUE");
   await pay(f.feePlanId, "400");
-  assert.equal(getFeePlanById(f.feePlanId).status, "PAID");
+  assert.equal((await getFeePlanById(f.feePlanId)).status, "PAID");
 });
 
 test("a manual payment is recorded as MANUAL/RECORDED, attributed to the staff member, and never as gateway-verified", async () => {
   const f = await withFee({ total: "900" });
   const res = await pay(f.feePlanId, "250", { method: "UPI", note: "UTR 12345" });
-  const row = db.prepare("SELECT * FROM payments WHERE id = ?").get(res.paymentId);
+  const row = await tdb.prepare("SELECT * FROM payments WHERE id = ?").get(res.paymentId);
   assert.equal(row.source, "MANUAL");
   assert.equal(row.status, "RECORDED");
   assert.equal(row.method, "UPI");
@@ -271,39 +272,38 @@ test("a double-submitted payment (same idempotency key) is recorded once", async
   assert.equal(a.ok, true);
   assert.equal(b.ok, false);
   assert.equal(b.reason, "duplicate");
-  assert.equal(db.prepare("SELECT COUNT(*) AS c FROM payments WHERE fee_plan_id = ?").get(f.feePlanId).c, 1);
+  assert.equal((await tdb.prepare("SELECT COUNT(*) AS c FROM payments WHERE fee_plan_id = ?").get(f.feePlanId)).c, 1);
   // through the action the repeat reads as already recorded, not an error
   const viaAction = await recordPaymentAction(null, form({ feePlanId: f.feePlanId, amount: "100", method: "CASH", paidOn: today, idempotencyKey: key }));
   assert.equal(viaAction.status, "success");
-  assert.equal(db.prepare("SELECT COUNT(*) AS c FROM payments WHERE fee_plan_id = ?").get(f.feePlanId).c, 1);
+  assert.equal((await tdb.prepare("SELECT COUNT(*) AS c FROM payments WHERE fee_plan_id = ?").get(f.feePlanId)).c, 1);
 });
 
 test("a failed write rolls back the whole financial transaction", async () => {
   const f = await withFee({ total: "900" });
-  db.exec(`CREATE TRIGGER fail_payment_audit BEFORE INSERT ON audit_log WHEN NEW.action = 'PAYMENT_RECORDED'
-           BEGIN SELECT RAISE(ABORT, 'simulated failure'); END;`);
-  const before = [count("payments"), count("audit_log")];
+  await failAuditInsert("fail_payment_audit", "PAYMENT_RECORDED");
+  const before = [await count("payments"), await count("audit_log")];
   try {
-    await assert.rejects(() => pay(f.feePlanId, "100"));
+    await assert.rejects(async () => await pay(f.feePlanId, "100"));
   } finally {
-    db.exec("DROP TRIGGER fail_payment_audit");
+    await removeAuditFailure("fail_payment_audit");
   }
-  assert.deepEqual([count("payments"), count("audit_log")], before, "no half-written payment");
-  assert.equal(getFeePlanById(f.feePlanId).paidMinor, 0);
+  assert.deepEqual([await count("payments"), await count("audit_log")], before, "no half-written payment");
+  assert.equal((await getFeePlanById(f.feePlanId)).paidMinor, 0);
   assert.equal((await pay(f.feePlanId, "100")).ok, true, "and the system still works afterwards");
 });
 
 // ------------------------------------------------------------------ receipts
 test("a receipt exists only for a real recorded payment; numbers are unique and tokens unguessable", async () => {
   const f = await withFee({ total: "600" });
-  assert.equal(db.prepare("SELECT COUNT(*) AS c FROM payments WHERE fee_plan_id = ?").get(f.feePlanId).c, 0);
+  assert.equal((await tdb.prepare("SELECT COUNT(*) AS c FROM payments WHERE fee_plan_id = ?").get(f.feePlanId)).c, 0);
   const rejected = await pay(f.feePlanId, "9999");
   assert.equal(rejected.ok, false);
-  assert.equal(db.prepare("SELECT COUNT(*) AS c FROM payments WHERE fee_plan_id = ?").get(f.feePlanId).c, 0, "no receipt for a rejected payment");
+  assert.equal((await tdb.prepare("SELECT COUNT(*) AS c FROM payments WHERE fee_plan_id = ?").get(f.feePlanId)).c, 0, "no receipt for a rejected payment");
 
   const a = await pay(f.feePlanId, "100");
   const b = await pay(f.feePlanId, "200");
-  const rows = db.prepare("SELECT receipt_number, receipt_token FROM payments WHERE fee_plan_id = ?").all(f.feePlanId);
+  const rows = await tdb.prepare("SELECT receipt_number, receipt_token FROM payments WHERE fee_plan_id = ?").all(f.feePlanId);
   assert.equal(rows.length, 2);
   assert.notEqual(rows[0].receipt_number, rows[1].receipt_number);
   assert.match(rows[0].receipt_number, /^RCPT-\d{4}-\d{6}$/);
@@ -322,7 +322,7 @@ test("students see only their own fees and receipts, read-only", async () => {
   const pm = await pay(mine.feePlanId, "1000");
   const theirs = await withFee({ total: "7000", label: "theirs" });
   const pt = await pay(theirs.feePlanId, "500");
-  const tokenOf = (id) => db.prepare("SELECT receipt_token t FROM payments WHERE id = ?").get(id).t;
+  const tokenOf = async (id) => (await tdb.prepare("SELECT receipt_token t FROM payments WHERE id = ?").get(id)).t;
 
   await signIn(mine.student);
   const fees = await getMyFees();
@@ -334,42 +334,42 @@ test("students see only their own fees and receipts, read-only", async () => {
   const dump = JSON.stringify(fees);
   for (const secret of ["recordedBy", "recorded_by", "audit", "note", "password", "token_hash"]) assert.ok(!dump.includes(secret), secret);
 
-  assert.ok(await getMyReceipt(tokenOf(pm.paymentId)));
-  assert.equal(await getMyReceipt(tokenOf(pt.paymentId)), null, "another student's receipt");
+  assert.ok(await getMyReceipt(await tokenOf(pm.paymentId)));
+  assert.equal(await getMyReceipt(await tokenOf(pt.paymentId)), null, "another student's receipt");
   assert.equal(await getMyReceipt("not-a-token"), null);
 
   // students can't change anything
-  const before = [count("payments"), count("fee_plans"), count("audit_log")];
+  const before = [await count("payments"), await count("fee_plans"), await count("audit_log")];
   assert.equal((await recordPaymentAction(null, form({ feePlanId: mine.feePlanId, amount: "2000", method: "CASH", paidOn: today }))).status, "error");
   assert.equal((await updateFeeAction(null, form({ feePlanId: mine.feePlanId, total: "1", discount: "0" }))).status, "error");
   assert.equal((await voidPaymentAction(null, form({ paymentId: pm.paymentId, reason: "no" }))).status, "error");
-  assert.deepEqual([count("payments"), count("fee_plans"), count("audit_log")], before);
-  assert.equal(getFeePlanById(mine.feePlanId).paidMinor, 100000);
+  assert.deepEqual([await count("payments"), await count("fee_plans"), await count("audit_log")], before);
+  assert.equal((await getFeePlanById(mine.feePlanId)).paidMinor, 100000);
 
   // other roles' sessions get nothing from the student view
   await signIn(await makeUser("TRAINER", "t"));
   assert.deepEqual(await getMyFees(), []);
-  assert.equal(await getMyReceipt(tokenOf(pm.paymentId)), null);
+  assert.equal(await getMyReceipt(await tokenOf(pm.paymentId)), null);
 });
 
 // --------------------------------------------------- history / void / cancel
 test("voiding keeps the record, restores the balance, hides the receipt and is audited", async () => {
   const f = await withFee({ total: "1000" });
   const p = await pay(f.feePlanId, "400");
-  const token = db.prepare("SELECT receipt_token t FROM payments WHERE id = ?").get(p.paymentId).t;
+  const token = (await tdb.prepare("SELECT receipt_token t FROM payments WHERE id = ?").get(p.paymentId)).t;
 
   assert.equal((await voidPayment({ paymentId: p.paymentId, reason: "  " })).reason, "reason_required");
   assert.equal((await voidPayment({ paymentId: "missing", reason: "x" })).reason, "not_found");
   assert.equal((await voidPayment({ paymentId: p.paymentId, reason: "Entered against the wrong student" })).ok, true);
   assert.equal((await voidPayment({ paymentId: p.paymentId, reason: "again" })).reason, "already_voided");
 
-  const row = db.prepare("SELECT * FROM payments WHERE id = ?").get(p.paymentId);
+  const row = await tdb.prepare("SELECT * FROM payments WHERE id = ?").get(p.paymentId);
   assert.equal(row.status, "VOIDED");
   assert.equal(row.amount_minor, 40000, "the amount is preserved");
   assert.equal(row.void_reason, "Entered against the wrong student");
   assert.equal(row.voided_by, f.accountant.id);
-  assert.equal(getFeePlanById(f.feePlanId).paidMinor, 0);
-  assert.equal(getFeePlanById(f.feePlanId).status, "PENDING");
+  assert.equal((await getFeePlanById(f.feePlanId)).paidMinor, 0);
+  assert.equal((await getFeePlanById(f.feePlanId)).status, "PENDING");
   assert.equal(await getPaymentForReceipt(p.paymentId), null);
   const detail = await getFeeDetail(f.feePlanId);
   assert.equal(detail.payments.length, 1, "history keeps the voided row");
@@ -384,7 +384,7 @@ test("fee edits can't go below what is paid; cancelling is blocked once payments
   await pay(f.feePlanId, "600");
   assert.equal((await updateFee({ feePlanId: f.feePlanId, total: "500", discount: "0", dueDate: "", note: "" })).reason, "below_paid");
   assert.equal((await updateFee({ feePlanId: f.feePlanId, total: "1500", discount: "100", dueDate: "2031-01-01", note: "revised" })).ok, true);
-  const plan = getFeePlanById(f.feePlanId);
+  const plan = await getFeePlanById(f.feePlanId);
   assert.equal(plan.netMinor, 140000);
   assert.equal(plan.outstandingMinor, 80000);
   assert.equal((await cancelFee({ feePlanId: f.feePlanId, reason: "oops" })).reason, "has_payments");
@@ -392,13 +392,13 @@ test("fee edits can't go below what is paid; cancelling is blocked once payments
   const clean = await withFee({ total: "200" });
   assert.equal((await cancelFee({ feePlanId: clean.feePlanId, reason: "" })).reason, "reason_required");
   assert.equal((await cancelFee({ feePlanId: clean.feePlanId, reason: "Enrollment withdrawn" })).ok, true);
-  const cancelled = getFeePlanById(clean.feePlanId);
+  const cancelled = await getFeePlanById(clean.feePlanId);
   assert.equal(cancelled.status, "CANCELLED");
   assert.equal(cancelled.totalMinor, 20000, "the record and amounts are kept");
   assert.equal((await pay(clean.feePlanId, "10")).reason, "cancelled");
   assert.equal((await updateFee({ feePlanId: clean.feePlanId, total: "1", discount: "0", dueDate: "", note: "" })).reason, "cancelled");
 
-  const actions = db.prepare("SELECT action FROM audit_log WHERE entity_id = ? ORDER BY rowid").all(f.feePlanId).map((r) => r.action);
+  const actions = (await tdb.prepare("SELECT action FROM audit_log WHERE entity_id = ? ORDER BY seq").all(f.feePlanId)).map((r) => r.action);
   assert.deepEqual(actions, ["FEE_PLAN_CREATED", "FEE_PLAN_UPDATED"]);
 });
 
@@ -407,9 +407,9 @@ test("fees survive an enrollment cancellation (financial history is preserved)",
   await pay(f.feePlanId, "300");
   await signIn(await makeUser("ADMIN", "canceller"));
   assert.equal((await setEnrollmentStatus(f.enrollmentId, "CANCELLED")).ok, true);
-  const plan = getFeePlanById(f.feePlanId);
+  const plan = await getFeePlanById(f.feePlanId);
   assert.equal(plan.paidMinor, 30000);
-  assert.equal(db.prepare("SELECT COUNT(*) AS c FROM payments WHERE fee_plan_id = ?").get(f.feePlanId).c, 1);
+  assert.equal((await tdb.prepare("SELECT COUNT(*) AS c FROM payments WHERE fee_plan_id = ?").get(f.feePlanId)).c, 1);
 });
 
 // ------------------------------------------------------------------ gateway
@@ -431,36 +431,36 @@ test("gateway confirmations (fake provider fixtures) are idempotent, validated a
   const f = await withFee({ total: "1000" });
   const evt = { provider: "fixture-provider", eventId: "evt_100", providerReference: "txn_100", feePlanId: f.feePlanId, amount: "400", currency: "INR", paidOn: today };
 
-  const first = confirmGatewayPayment(evt);
+  const first = await confirmGatewayPayment(evt);
   assert.equal(first.ok, true);
-  const row = db.prepare("SELECT * FROM payments WHERE provider_reference = 'txn_100'").get();
+  const row = await tdb.prepare("SELECT * FROM payments WHERE provider_reference = 'txn_100'").get();
   assert.equal(row.source, "GATEWAY");
   assert.equal(row.status, "VERIFIED");
   assert.ok(row.verified_at);
   assert.equal(row.recorded_by, null);
-  assert.equal(getFeePlanById(f.feePlanId).paidMinor, 40000);
+  assert.equal((await getFeePlanById(f.feePlanId)).paidMinor, 40000);
 
   // replay of the same event / same provider reference: still one payment
-  assert.equal(confirmGatewayPayment(evt).duplicate, true);
-  assert.equal(confirmGatewayPayment({ ...evt, eventId: "evt_100_retry" }).duplicate, true);
-  assert.equal(db.prepare("SELECT COUNT(*) AS c FROM payments WHERE provider_reference = 'txn_100'").get().c, 1);
-  assert.equal(getFeePlanById(f.feePlanId).paidMinor, 40000);
+  assert.equal((await confirmGatewayPayment(evt)).duplicate, true);
+  assert.equal((await confirmGatewayPayment({ ...evt, eventId: "evt_100_retry" })).duplicate, true);
+  assert.equal((await tdb.prepare("SELECT COUNT(*) AS c FROM payments WHERE provider_reference = 'txn_100'").get()).c, 1);
+  assert.equal((await getFeePlanById(f.feePlanId)).paidMinor, 40000);
 
   // invalid events change nothing
-  const before = count("payments");
-  assert.equal(confirmGatewayPayment({ ...evt, eventId: "e2", providerReference: "t2", currency: "USD" }).reason, "currency_mismatch");
-  assert.equal(confirmGatewayPayment({ ...evt, eventId: "e3", providerReference: "t3", amount: "abc" }).reason, "invalid_amount");
-  assert.equal(confirmGatewayPayment({ ...evt, eventId: "e4", providerReference: "t4", amount: "-5" }).reason, "invalid_amount");
-  assert.equal(confirmGatewayPayment({ ...evt, eventId: "e5", providerReference: "t5", feePlanId: "nope" }).reason, "unknown_fee");
-  assert.equal(confirmGatewayPayment({ ...evt, eventId: "e6", providerReference: "t6", amount: "600.01" }).reason, "exceeds_outstanding");
-  assert.equal(confirmGatewayPayment({ ...evt, eventId: "", providerReference: "t7" }).reason, "invalid_event");
-  assert.equal(count("payments"), before);
+  const before = await count("payments");
+  assert.equal((await confirmGatewayPayment({ ...evt, eventId: "e2", providerReference: "t2", currency: "USD" })).reason, "currency_mismatch");
+  assert.equal((await confirmGatewayPayment({ ...evt, eventId: "e3", providerReference: "t3", amount: "abc" })).reason, "invalid_amount");
+  assert.equal((await confirmGatewayPayment({ ...evt, eventId: "e4", providerReference: "t4", amount: "-5" })).reason, "invalid_amount");
+  assert.equal((await confirmGatewayPayment({ ...evt, eventId: "e5", providerReference: "t5", feePlanId: "nope" })).reason, "unknown_fee");
+  assert.equal((await confirmGatewayPayment({ ...evt, eventId: "e6", providerReference: "t6", amount: "600.01" })).reason, "exceeds_outstanding");
+  assert.equal((await confirmGatewayPayment({ ...evt, eventId: "", providerReference: "t7" })).reason, "invalid_event");
+  assert.equal(await count("payments"), before);
 
   // out-of-order delivery: a later event can land first without breaking the balance
-  assert.equal(confirmGatewayPayment({ ...evt, eventId: "evt_103", providerReference: "txn_103", amount: "300" }).ok, true);
-  assert.equal(confirmGatewayPayment({ ...evt, eventId: "evt_102", providerReference: "txn_102", amount: "300" }).ok, true);
-  assert.equal(getFeePlanById(f.feePlanId).status, "PAID");
-  assert.equal(confirmGatewayPayment({ ...evt, eventId: "evt_104", providerReference: "txn_104", amount: "1" }).reason, "already_paid");
+  assert.equal((await confirmGatewayPayment({ ...evt, eventId: "evt_103", providerReference: "txn_103", amount: "300" })).ok, true);
+  assert.equal((await confirmGatewayPayment({ ...evt, eventId: "evt_102", providerReference: "txn_102", amount: "300" })).ok, true);
+  assert.equal((await getFeePlanById(f.feePlanId)).status, "PAID");
+  assert.equal((await confirmGatewayPayment({ ...evt, eventId: "evt_104", providerReference: "txn_104", amount: "1" })).reason, "already_paid");
 });
 
 // -------------------------------------------------------------- list / search
@@ -496,7 +496,7 @@ test("fee list: search, derived-status and course filters, sort, pagination; inj
   const names = (await getFeesPage(p({ sort: "name" }))).rows.map((r) => r.studentName.toLowerCase());
   assert.deepEqual(names, [...names].sort());
 
-  const before = count("fee_plans");
+  const before = await count("fee_plans");
   for (const evil of ["' OR 1=1 --", "'; DROP TABLE fee_plans; --", "%", "_"]) {
     const r = await getFeesPage(parseFeeParams({ q: evil, status: evil, course: evil, sort: evil }));
     if (["%", "_"].includes(evil)) {
@@ -506,7 +506,7 @@ test("fee list: search, derived-status and course filters, sort, pagination; inj
       assert.equal(r.total, 0, evil);
     }
   }
-  assert.equal(count("fee_plans"), before);
+  assert.equal(await count("fee_plans"), before);
   const summary = await getFeeSummary();
   assert.ok(summary.paidMinor >= 100500 + 1000);
 });

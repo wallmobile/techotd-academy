@@ -48,10 +48,10 @@ test("M1 dashboard: summary cards, role distribution and recent registrations eq
   await admin.goto("/admin");
   const text = await bodyText(admin.page);
   const d = db();
-  const total = d.prepare("SELECT COUNT(*) c FROM users").get().c;
-  const students = d.prepare("SELECT COUNT(*) c FROM users WHERE role='STUDENT'").get().c;
-  const trainers = d.prepare("SELECT COUNT(*) c FROM users WHERE role='TRAINER'").get().c;
-  const names = d.prepare("SELECT name FROM users").all().map((r) => r.name);
+  const total = (await d.prepare("SELECT COUNT(*) c FROM users").get()).c;
+  const students = (await d.prepare("SELECT COUNT(*) c FROM users WHERE role='STUDENT'").get()).c;
+  const trainers = (await d.prepare("SELECT COUNT(*) c FROM users WHERE role='TRAINER'").get()).c;
+  const names = (await d.prepare("SELECT name FROM users").all()).map((r) => r.name);
   d.close();
   assert.match(text, new RegExp(`TOTAL USERS ${total}\\b`, "i"));
   assert.match(text, new RegExp(`STUDENTS ${students}\\b`, "i"));
@@ -79,7 +79,7 @@ test("M2 limited roles get a role-appropriate landing page, never a redirect loo
 test("M3 users list: 20 per page, correct totals, Next/Previous, out-of-range and junk page params are clamped", async () => {
   const admin = await as("admin");
   const d = db();
-  const total = d.prepare("SELECT COUNT(*) c FROM users").get().c;
+  const total = (await d.prepare("SELECT COUNT(*) c FROM users").get()).c;
   d.close();
   assert.ok(total > 20);
   await admin.goto("/admin/users");
@@ -128,7 +128,7 @@ test("M4 search, role filter, sort and reset work and survive paging; empty resu
   await admin.goto("/admin/users?role=TRAINER");
   assert.equal(await rowsOf(admin.page), 2);
   await admin.goto("/admin/users?role=NOT_A_ROLE");
-  assert.ok(!/error|something went wrong/i.test(await bodyText(admin.page).then((t) => t.slice(0, 400))));
+  assert.ok(!/error|something went wrong/i.test((await bodyText(admin.page)).slice(0, 400)));
   admin.assertClean("list filters");
 });
 
@@ -138,7 +138,7 @@ test("M5 leads list: 25 seeded leads page correctly; status/source/assignment fi
   assert.match(await bodyText(admin.page), /Showing 1–20 of 25/);
   await admin.goto("/admin/leads?source=ENQUIRY");
   const d = db();
-  const enq = d.prepare("SELECT COUNT(*) c FROM leads WHERE source='ENQUIRY'").get().c;
+  const enq = (await d.prepare("SELECT COUNT(*) c FROM leads WHERE source='ENQUIRY'").get()).c;
   d.close();
   assert.match(await bodyText(admin.page), new RegExp(`of ${enq}\\b`));
   await admin.goto("/admin/leads?status=CONVERTED");
@@ -170,7 +170,7 @@ test("M6 lead assignment, status change, notes and conversion from the lead page
   await admin.page.getByRole("button", { name: /add note/i }).click();
   await admin.page.getByText("Audit note").waitFor();
   let d = db();
-  const row = d.prepare("SELECT status, assigned_to FROM leads WHERE id = ?").get(leadId);
+  const row = await d.prepare("SELECT status, assigned_to FROM leads WHERE id = ?").get(leadId);
   d.close();
   assert.deepEqual({ ...row }, { status: "QUALIFIED", assigned_to: stack.data.users.counsellor.id });
 
@@ -178,16 +178,16 @@ test("M6 lead assignment, status change, notes and conversion from the lead page
   await admin.page.getByRole("button", { name: /convert to student/i }).click();
   for (let i = 0; i < 40; i += 1) {
     const dd = db();
-    const st = dd.prepare("SELECT status FROM leads WHERE id = ?").get(leadId).status;
+    const st = (await dd.prepare("SELECT status FROM leads WHERE id = ?").get(leadId)).status;
     dd.close();
     if (st === "CONVERTED") break;
     await admin.page.waitForTimeout(250);
   }
   d = db();
-  const conv = d.prepare("SELECT status, converted_user_id FROM leads WHERE id = ?").get(leadId);
+  const conv = await d.prepare("SELECT status, converted_user_id FROM leads WHERE id = ?").get(leadId);
   assert.equal(conv.status, "CONVERTED");
   assert.ok(conv.converted_user_id);
-  assert.equal(d.prepare("SELECT role FROM users WHERE id = ?").get(conv.converted_user_id).role, "STUDENT");
+  assert.equal((await d.prepare("SELECT role FROM users WHERE id = ?").get(conv.converted_user_id)).role, "STUDENT");
   d.close();
   await admin.goto("/admin/leads?status=CONVERTED");
   assert.equal(await rowsOf(admin.page), 1);
@@ -242,7 +242,7 @@ test("M8 create trainer: validation messages, duplicate email, success creates e
   await admin.page.getByRole("button", { name: /create trainer/i }).click();
   await admin.page.waitForURL(/\/admin\/trainers\/[0-9a-f-]{36}$/, { timeout: 10000 });
   const d = db();
-  const u = d.prepare("SELECT role, status FROM users WHERE email = 'audit.trainer@e2e.test'").get();
+  const u = await d.prepare("SELECT role, status FROM users WHERE email = 'audit.trainer@e2e.test'").get();
   d.close();
   assert.deepEqual({ ...u }, { role: "TRAINER", status: "ACTIVE" });
 
@@ -251,7 +251,7 @@ test("M8 create trainer: validation messages, duplicate email, success creates e
   await admin.page.getByRole("button", { name: /assign batch/i }).click();
   await admin.page.getByText(/Live Online/).first().waitFor();
   const d2 = db();
-  assert.equal(d2.prepare("SELECT COUNT(*) c FROM trainer_batch_assignments WHERE batch_id = ? AND trainer_user_id = (SELECT id FROM users WHERE email = 'audit.trainer@e2e.test')").get(stack.data.batch).c, 1);
+  assert.equal((await d2.prepare("SELECT COUNT(*) c FROM trainer_batch_assignments WHERE batch_id = ? AND trainer_user_id = (SELECT id FROM users WHERE email = 'audit.trainer@e2e.test')").get(stack.data.batch)).c, 1);
   d2.close();
 
   const fresh = await new Session(stack, "newtrainer").open();
@@ -286,7 +286,7 @@ test("M10 super-admin console: staff list, create staff (validation, duplicate, 
   await sa.goto("/super-admin");
   assert.match(await bodyText(sa.page), /Super Admin Console/);
   const d0 = db();
-  const staffCount = d0.prepare("SELECT COUNT(*) c FROM users WHERE role NOT IN ('STUDENT','TRAINER')").get().c;
+  const staffCount = (await d0.prepare("SELECT COUNT(*) c FROM users WHERE role NOT IN ('STUDENT','TRAINER')").get()).c;
   d0.close();
   assert.match(await bodyText(sa.page), new RegExp(`STAFF ACCOUNTS ${staffCount}\\b`, "i"));
 
@@ -316,7 +316,7 @@ test("M10 super-admin console: staff list, create staff (validation, duplicate, 
   // a successful create redirects to the new user's page
   await sa.page.waitForURL(/\/admin\/users\/[0-9a-f-]{36}$/, { timeout: 10000 });
   const d = db();
-  const u = d.prepare("SELECT role, status FROM users WHERE email = 'audit.accountant@e2e.test'").get();
+  const u = await d.prepare("SELECT role, status FROM users WHERE email = 'audit.accountant@e2e.test'").get();
   d.close();
   assert.deepEqual({ ...u }, { role: "ACCOUNTANT", status: "ACTIVE" });
 
@@ -350,9 +350,9 @@ test("M11 privilege escalation is impossible: a forged role=SUPER_ADMIN is refus
   await post(admin, { email: "forged.byadmin@e2e.test", role: "ADMIN" });
   const d = db();
   for (const e of ["forged.super", "forged.trainer", "forged.student", "forged.byadmin"]) {
-    assert.equal(d.prepare("SELECT COUNT(*) c FROM users WHERE email = ?").get(`${e}@e2e.test`).c, 0, `${e} must not exist`);
+    assert.equal((await d.prepare("SELECT COUNT(*) c FROM users WHERE email = ?").get(`${e}@e2e.test`)).c, 0, `${e} must not exist`);
   }
-  assert.equal(d.prepare("SELECT COUNT(*) c FROM users WHERE role = 'SUPER_ADMIN'").get().c, 1);
+  assert.equal((await d.prepare("SELECT COUNT(*) c FROM users WHERE role = 'SUPER_ADMIN'").get()).c, 1);
   d.close();
 });
 
@@ -390,7 +390,7 @@ test("M13 'Soon' modules are inert: Content and Settings are not links and their
 test("M14 mobile layout: every list, detail and form page fits 390px without overflow or console errors", async () => {
   const m = await as("superadmin", { viewport: VIEWPORTS.mobile });
   const d = db();
-  const leadId = d.prepare("SELECT id FROM leads LIMIT 1").get().id;
+  const leadId = (await d.prepare("SELECT id FROM leads LIMIT 1").get()).id;
   d.close();
   const routes = [
     "/super-admin", "/super-admin/staff", "/super-admin/staff/new",
@@ -412,20 +412,20 @@ test("M14 mobile layout: every list, detail and form page fits 390px without ove
 
 test("M15 error state: a failing query shows the friendly error page (no stack, no SQL), other pages keep working, retry recovers", async () => {
   const admin = await as("admin");
-  const d = db({ readonly: false });
-  d.exec("ALTER TABLE leads RENAME TO leads_hidden");
+  const d = db();
+  await d.exec("ALTER TABLE leads RENAME TO leads_hidden");
   try {
     const r = await admin.goto("/admin/leads");
     const t = await bodyText(admin.page);
     assert.ok(r.status() >= 500 || /something went wrong|try again|error/i.test(t), "an error state is shown");
-    assert.ok(!/no such table|SQLITE|leads_hidden|at \w+ \(|\.js:\d+/.test(t), "no internals leaked");
+    assert.ok(!/no such table|SQLITE|relation|does not exist|leads_hidden|at \w+ \(|\.js:\d+/.test(t), "no internals leaked");
     assert.ok(await admin.page.getByRole("link", { name: /go to dashboard/i }).count() + (await admin.page.getByRole("button", { name: /try again/i }).count()) > 0, "recovery controls offered");
     if (SHOTS) await admin.shot("admin-error-state");
     await admin.goto("/admin/users");
     assert.match(await bodyText(admin.page), /Showing/, "unrelated pages unaffected");
   } finally {
-    d.exec("ALTER TABLE leads_hidden RENAME TO leads");
-    d.close();
+    await d.exec("ALTER TABLE leads_hidden RENAME TO leads");
+    await d.close();
   }
   await admin.goto("/admin/leads");
   assert.match(await bodyText(admin.page), /Showing 1–20/);

@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { tdb } from "./tdb.mjs";
 import crypto from "node:crypto";
 import { db } from "@/lib/db/client";
 import { consumeRateLimit } from "@/lib/db/rateLimits";
@@ -27,27 +28,27 @@ async function attemptLogin(email, password) {
   }
 }
 
-test("rate limiter: fixed window, per key, resets after the window", () => {
+test("rate limiter: fixed window, per key, resets after the window", async () => {
   const key = `unit:${crypto.randomUUID()}`;
   const cfg = { limit: 3, windowSeconds: 60 };
-  assert.deepEqual([1, 2, 3].map(() => consumeRateLimit(key, cfg).allowed), [true, true, true]);
-  const blocked = consumeRateLimit(key, cfg);
+  assert.deepEqual(await Promise.all([1, 2, 3].map(async () => (await consumeRateLimit(key, cfg)).allowed)), [true, true, true]);
+  const blocked = await consumeRateLimit(key, cfg);
   assert.equal(blocked.allowed, false);
   assert.ok(blocked.retryAfterSeconds >= 1 && blocked.retryAfterSeconds <= 60);
-  assert.equal(consumeRateLimit(`${key}:other`, cfg).allowed, true, "independent keys");
+  assert.equal((await consumeRateLimit(`${key}:other`, cfg)).allowed, true, "independent keys");
 
   // an expired window starts over
-  db.prepare("UPDATE rate_limits SET window_start = window_start - 120 WHERE key = ?").run(key);
-  assert.equal(consumeRateLimit(key, cfg).allowed, true);
+  await tdb.prepare("UPDATE rate_limits SET window_start = window_start - 120 WHERE key = ?").run(key);
+  assert.equal((await consumeRateLimit(key, cfg)).allowed, true);
 });
 
-test("limiter state is in the shared database (not process memory) and stores no raw identifiers", () => {
+test("limiter state is in the shared database (not process memory) and stores no raw identifiers", async () => {
   const email = `secret-${crypto.randomUUID()}@example.test`;
-  hitLimit("login", "203.0.113.9", email);
-  const keys = db.prepare("SELECT key FROM rate_limits").all().map((r) => r.key).join("\n");
+  await hitLimit("login", "203.0.113.9", email);
+  const keys = (await tdb.prepare("SELECT key FROM rate_limits").all()).map((r) => r.key).join("\n");
   assert.ok(!keys.includes(email));
   assert.ok(!keys.includes("203.0.113.9"));
-  assert.ok(db.prepare("SELECT COUNT(*) AS c FROM rate_limits WHERE key LIKE 'login:%'").get().c >= 1);
+  assert.ok((await tdb.prepare("SELECT COUNT(*) AS c FROM rate_limits WHERE key LIKE 'login:%'").get()).c >= 1);
 });
 
 test("client IP comes from the forwarding headers, with a safe fallback", async () => {
@@ -86,7 +87,7 @@ test("login is throttled per account+IP: guessing is cut off, even with the righ
 test("forgot-password is throttled but the public response never changes (no enumeration, no extra tokens)", async () => {
   const user = await makeUser("STUDENT", "forgot");
   setRequestHeaders({ "x-forwarded-for": "192.0.2.20" });
-  const tokensFor = () => db.prepare("SELECT COUNT(*) AS c FROM password_reset_tokens WHERE user_id = ?").get(user.id).c;
+  const tokensFor = async () => (await tdb.prepare("SELECT COUNT(*) AS c FROM password_reset_tokens WHERE user_id = ?").get(user.id)).c;
 
   const responses = [];
   for (let i = 0; i < LIMITS.forgotPassword.limit + 3; i += 1) {
@@ -94,7 +95,7 @@ test("forgot-password is throttled but the public response never changes (no enu
   }
   assert.equal(new Set(responses.map((r) => r.message)).size, 1, "identical public message throughout");
   assert.ok(responses.every((r) => r.status === "success"));
-  assert.equal(tokensFor(), LIMITS.forgotPassword.limit, "no tokens are minted past the limit");
+  assert.equal(await tokensFor(), LIMITS.forgotPassword.limit, "no tokens are minted past the limit");
 });
 
 test("public enquiry submissions are throttled per client IP and write nothing once limited", async () => {
@@ -104,23 +105,23 @@ test("public enquiry submissions are throttled per client IP and write nothing o
   for (let i = 0; i < LIMITS.enquiry.limit + 2; i += 1) results.push(await submitEnquiryAction(mk(i), "enquiry"));
   assert.equal(results.filter((r) => r.ok).length, LIMITS.enquiry.limit);
   assert.match(results.at(-1).error, /several requests/);
-  const stored = db.prepare("SELECT COUNT(*) AS c FROM leads WHERE name = 'Rate Tester'").get().c;
+  const stored = (await tdb.prepare("SELECT COUNT(*) AS c FROM leads WHERE name = 'Rate Tester'").get()).c;
   assert.equal(stored, LIMITS.enquiry.limit);
   setRequestHeaders({ "x-forwarded-for": "192.0.2.31" });
   assert.equal((await submitEnquiryAction(mk("other"), "enquiry")).ok, true, "other clients unaffected");
 });
 
-test("certificate verification limiter allows normal use and blocks bursts per IP", () => {
+test("certificate verification limiter allows normal use and blocks bursts per IP", async () => {
   const ip = `192.0.2.${40 + Math.floor(Math.random() * 100)}`;
   let blockedAt = null;
   for (let i = 1; i <= LIMITS.verifyCertificate.limit + 5; i += 1) {
-    if (!hitLimit("verifyCertificate", ip).allowed) {
+    if (!(await hitLimit("verifyCertificate", ip)).allowed) {
       blockedAt = i;
       break;
     }
   }
   assert.equal(blockedAt, LIMITS.verifyCertificate.limit + 1);
-  assert.equal(hitLimit("verifyCertificate", "198.18.0.1").allowed, true);
+  assert.equal((await hitLimit("verifyCertificate", "198.18.0.1")).allowed, true);
 });
 
 test("production never prints a guessed domain on a certificate", () => {

@@ -72,8 +72,8 @@ before(async () => {
   await anon.close();
 
   const d = openDb(stack);
-  ids.lead = d.prepare("SELECT id FROM leads WHERE email = 'audit.lead@e2e.test'").get().id;
-  ids.payment = d.prepare("SELECT id FROM payments").get().id;
+  ids.lead = (await d.prepare("SELECT id FROM leads WHERE email = 'audit.lead@e2e.test'").get()).id;
+  ids.payment = (await d.prepare("SELECT id FROM payments").get()).id;
   ids.student = stack.data.users.student.id;
   ids.trainer = stack.data.users.trainer.id;
   d.close();

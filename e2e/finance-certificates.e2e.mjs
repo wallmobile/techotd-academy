@@ -53,7 +53,7 @@ test("F1 assign fee: invalid amounts are rejected with messages; a valid plan sh
   await acc.page.waitForTimeout(600);
   assert.match(await bodyText(acc.page), /discount|exceed|greater/i);
   let d = db();
-  assert.equal(d.prepare("SELECT COUNT(*) c FROM fee_plans").get().c, 0, "nothing stored for invalid input");
+  assert.equal((await d.prepare("SELECT COUNT(*) c FROM fee_plans").get()).c, 0, "nothing stored for invalid input");
   d.close();
 
   await acc.page.getByLabel("Total fee").fill("12000");
@@ -65,7 +65,7 @@ test("F1 assign fee: invalid amounts are rejected with messages; a valid plan sh
   assert.match(text, /NET PAYABLE ₹10,000\.00/i);
   assert.match(text, /OUTSTANDING ₹10,000\.00/i);
   d = db();
-  const plan = d.prepare("SELECT total_minor, discount_minor, currency FROM fee_plans").get();
+  const plan = await d.prepare("SELECT total_minor, discount_minor, currency FROM fee_plans").get();
   assert.deepEqual({ ...plan }, { total_minor: 1200000, discount_minor: 200000, currency: "INR" }, "stored as integer minor units");
   d.close();
   acc.assertClean("assign fee");
@@ -83,7 +83,7 @@ test("F2 assigning a second fee to the same enrollment is refused", async () => 
   }
   assert.ok(/already|exists|has a fee/i.test(await bodyText(acc.page)) || form === 0 || /fees\/[0-9a-f-]{36}$/.test(acc.page.url()), text.slice(0, 200));
   const d = db();
-  assert.equal(d.prepare("SELECT COUNT(*) c FROM fee_plans").get().c, 1);
+  assert.equal((await d.prepare("SELECT COUNT(*) c FROM fee_plans").get()).c, 1);
   d.close();
 });
 
@@ -102,7 +102,7 @@ test("F3 record payment: validation, partial payment totals, overpayment refused
   await acc.page.waitForTimeout(800);
   assert.match(await bodyText(acc.page), /exceed|more than|outstanding|overpay/i);
   let d = db();
-  assert.equal(d.prepare("SELECT COUNT(*) c FROM payments").get().c, 0);
+  assert.equal((await d.prepare("SELECT COUNT(*) c FROM payments").get()).c, 0);
   d.close();
 
   await acc.page.getByLabel("Amount received").fill("4000");
@@ -113,7 +113,7 @@ test("F3 record payment: validation, partial payment totals, overpayment refused
   await Promise.allSettled([btn.click({ timeout: 3000 }), btn.click({ timeout: 3000, force: true })]);
   await acc.page.waitForTimeout(1500);
   d = db();
-  const pays = d.prepare("SELECT amount_minor, source, status, receipt_number FROM payments").all();
+  const pays = await d.prepare("SELECT amount_minor, source, status, receipt_number FROM payments").all();
   d.close();
   assert.equal(pays.length, 1, `double-submit recorded once, got ${pays.length}`);
   assert.equal(pays[0].amount_minor, 400000);
@@ -144,7 +144,7 @@ test("F5 void: reason required; voiding restores the outstanding balance and wri
   await acc.page.waitForTimeout(500);
   assert.match(await bodyText(acc.page), /reason/i);
   let d = db();
-  assert.equal(d.prepare("SELECT COUNT(*) c FROM payments WHERE voided_at IS NOT NULL").get().c, 0);
+  assert.equal((await d.prepare("SELECT COUNT(*) c FROM payments WHERE voided_at IS NOT NULL").get()).c, 0);
   d.close();
 
   await acc.page.getByLabel("Void reason").fill("Entered against the wrong student");
@@ -155,9 +155,9 @@ test("F5 void: reason required; voiding restores the outstanding balance and wri
   assert.match(text, /OUTSTANDING ₹10,000\.00/i);
   assert.match(text, /voided/i);
   d = db();
-  const p = d.prepare("SELECT status, voided_at, void_reason FROM payments").get();
+  const p = await d.prepare("SELECT status, voided_at, void_reason FROM payments").get();
   assert.ok(p.voided_at && /wrong student/.test(p.void_reason));
-  const actions = d.prepare("SELECT action FROM audit_log ORDER BY created_at, rowid").all().map((r) => r.action);
+  const actions = (await d.prepare("SELECT action FROM audit_log ORDER BY created_at, seq").all()).map((r) => r.action);
   assert.ok(actions.some((a) => /fee.*(created|assigned)/i.test(a)), actions.join(","));
   assert.ok(actions.some((a) => /payment.*record/i.test(a)), actions.join(","));
   assert.ok(actions.some((a) => /payment.*void/i.test(a)), actions.join(","));
@@ -172,16 +172,16 @@ test("F5 void: reason required; voiding restores the outstanding balance and wri
   assert.match(t2, /PAID ₹1,500\.00/i);
   assert.match(t2, /OUTSTANDING ₹8,500\.00/i);
   d = db();
-  const rows = d.prepare("SELECT receipt_number FROM payments").all();
+  const rows = await d.prepare("SELECT receipt_number FROM payments").all();
   assert.equal(new Set(rows.map((r) => r.receipt_number)).size, 2, "receipt numbers are unique");
-  const sum = d.prepare("SELECT SUM(amount_minor) s FROM payments WHERE voided_at IS NULL").get().s;
+  const sum = (await d.prepare("SELECT SUM(amount_minor) s FROM payments WHERE voided_at IS NULL").get()).s;
   assert.equal(sum, 150000);
   d.close();
 });
 
 test("F6 notifications about fees carry no amounts or reasons", async () => {
   const d = db();
-  const rows = d.prepare("SELECT title, message FROM notifications WHERE user_id = ?").all(stack.data.users.student.id);
+  const rows = await d.prepare("SELECT title, message FROM notifications WHERE user_id = ?").all(stack.data.users.student.id);
   d.close();
   assert.ok(rows.length >= 2, "student was notified");
   for (const r of rows) assert.ok(!/₹|\d{3,}|wrong student|UPI/i.test(`${r.title} ${r.message}`), `leak in "${r.message}"`);
@@ -227,7 +227,7 @@ test("G1 a not-yet-eligible enrollment needs a recorded manual approval; blank a
   await admin.page.waitForTimeout(600);
   assert.match(await bodyText(admin.page), /reason|required|approval/i);
   const d = db();
-  assert.equal(d.prepare("SELECT COUNT(*) c FROM certificates").get().c, 0);
+  assert.equal((await d.prepare("SELECT COUNT(*) c FROM certificates").get()).c, 0);
   d.close();
 });
 
@@ -239,7 +239,7 @@ test("G2 manual approval issues one ACTIVE certificate with an unguessable token
   await admin.page.waitForURL(/\/admin\/certificates\/[0-9a-f-]{36}$/, { timeout: 10000 });
   state.certUrl = new URL(admin.page.url()).pathname;
   const d = db();
-  const c = d.prepare("SELECT certificate_number, verification_token, status, issuance_basis, approval_note FROM certificates").get();
+  const c = await d.prepare("SELECT certificate_number, verification_token, status, issuance_basis, approval_note FROM certificates").get();
   d.close();
   assert.equal(c.status, "ACTIVE");
   assert.equal(c.issuance_basis, "MANUAL_APPROVAL");
@@ -306,14 +306,14 @@ test("G5 revocation requires a reason, invalidates verification and the student 
   await admin.page.getByRole("button", { name: /revoke/i }).click();
   await admin.page.waitForTimeout(500);
   const d = db();
-  assert.equal(d.prepare("SELECT status FROM certificates").get().status, "ACTIVE", "blank reason does not revoke");
+  assert.equal((await d.prepare("SELECT status FROM certificates").get()).status, "ACTIVE", "blank reason does not revoke");
   d.close();
 
   await admin.page.getByLabel(/reason/i).fill("Issued in error");
   await admin.page.getByRole("button", { name: /revoke/i }).click();
   await admin.page.waitForTimeout(1200);
   const d2 = db();
-  const c = d2.prepare("SELECT status, revoked_reason FROM certificates").get();
+  const c = await d2.prepare("SELECT status, revoked_reason FROM certificates").get();
   d2.close();
   assert.equal(c.status, "REVOKED");
   assert.match(c.revoked_reason, /Issued in error/);

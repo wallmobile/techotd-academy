@@ -12,13 +12,13 @@ import { batches } from "@/data/batches";
 export const PASSWORD = "Correct-Horse-9";
 let passwordHashPromise;
 // bcrypt cost 12 is slow; hash once and share across every test user.
-export function sharedPasswordHash() {
-  passwordHashPromise ??= hashPassword(PASSWORD);
+export async function sharedPasswordHash() {
+  passwordHashPromise ??= await hashPassword(PASSWORD);
   return passwordHashPromise;
 }
 
 export async function makeUser(role, label) {
-  return createUser({
+  return await createUser({
     name: `${label} ${crypto.randomUUID().slice(0, 4)}`,
     email: `${label}-${crypto.randomUUID().slice(0, 8)}@example.test`.toLowerCase(),
     phone: null,
@@ -59,14 +59,14 @@ export function ensureSecondBatch() {
 
 export async function makeStudentInBatch(batchId, courseSlug, label = "student") {
   const user = await makeUser("STUDENT", label);
-  const profile = getOrCreateStudentProfile(user.id);
-  createCourseEnrollment(profile.id, courseSlug);
-  createBatchEnrollment(profile.id, batchId);
+  const profile = await getOrCreateStudentProfile(user.id);
+  await createCourseEnrollment(profile.id, courseSlug);
+  await createBatchEnrollment(profile.id, batchId);
   return { user, profile };
 }
 
 export async function makeTrainerForBatch(batchId, label = "trainer") {
   const user = await makeUser("TRAINER", label);
-  createTrainerBatchAssignment(user.id, batchId);
+  await createTrainerBatchAssignment(user.id, batchId);
   return user;
 }

@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { tdb } from "./tdb.mjs";
 import { createAssignment } from "@/lib/db/assignments";
 import { upsertSubmission, getSubmissionForStudentAssignment } from "@/lib/db/assignmentSubmissions";
 import { db } from "@/lib/db/client";
@@ -19,7 +20,7 @@ async function setup() {
   const { batchA } = ensureSecondBatch();
   const trainer = await makeTrainerForBatch(batchA.id);
   const { user, profile } = await makeStudentInBatch(batchA.id, batchA.courseSlug);
-  const assignment = createAssignment({
+  const assignment = await createAssignment({
     courseSlug: batchA.courseSlug,
     batchId: batchA.id,
     title: "Essay",
@@ -34,7 +35,7 @@ test("first submission is stored as SUBMITTED with no evaluation", async () => {
   await signIn(user);
   const res = await submitAssignmentAction(null, form({ assignmentId: assignment.id, submissionText: "my first answer" }));
   assert.equal(res.status, "success");
-  const sub = getSubmissionForStudentAssignment(profile.id, assignment.id);
+  const sub = await getSubmissionForStudentAssignment(profile.id, assignment.id);
   assert.equal(sub.status, "SUBMITTED");
   assert.equal(sub.score, null);
   assert.equal(sub.feedback, null);
@@ -46,7 +47,7 @@ test("resubmitting an evaluated submission clears score, feedback and evaluated_
 
   await signIn(user);
   await submitAssignmentAction(null, form({ assignmentId: assignment.id, submissionText: "v1" }));
-  const first = getSubmissionForStudentAssignment(profile.id, assignment.id);
+  const first = await getSubmissionForStudentAssignment(profile.id, assignment.id);
 
   await signIn(trainer);
   const evalRes = await evaluateSubmissionAction(
@@ -54,7 +55,7 @@ test("resubmitting an evaluated submission clears score, feedback and evaluated_
     form({ submissionId: first.id, status: "REVIEWED", score: "88", feedback: "Nice" })
   );
   assert.equal(evalRes.status, "success");
-  const evaluated = getSubmissionForStudentAssignment(profile.id, assignment.id);
+  const evaluated = await getSubmissionForStudentAssignment(profile.id, assignment.id);
   assert.equal(evaluated.status, "REVIEWED");
   assert.equal(evaluated.score, 88);
   assert.ok(evaluated.evaluatedAt);
@@ -63,7 +64,7 @@ test("resubmitting an evaluated submission clears score, feedback and evaluated_
   await signIn(user);
   const re = await submitAssignmentAction(null, form({ assignmentId: assignment.id, submissionText: "v2 revised" }));
   assert.equal(re.status, "success");
-  const after = getSubmissionForStudentAssignment(profile.id, assignment.id);
+  const after = await getSubmissionForStudentAssignment(profile.id, assignment.id);
   assert.equal(after.id, first.id, "same row, no duplicate submission");
   assert.equal(after.status, "SUBMITTED");
   assert.equal(after.submissionText, "v2 revised");
@@ -77,11 +78,11 @@ test("resubmitting an evaluated submission clears score, feedback and evaluated_
 
 test("db-level upsert also clears a stale evaluation and keeps updated_at current", async () => {
   const { profile, assignment } = await setup();
-  const first = upsertSubmission({ assignmentId: assignment.id, studentId: profile.id, submissionText: "a" });
-  db.prepare(
-    "UPDATE assignment_submissions SET status='RETURNED', score=10, feedback='x', evaluated_at=datetime('now'), updated_at='2000-01-01 00:00:00' WHERE id = ?"
+  const first = await upsertSubmission({ assignmentId: assignment.id, studentId: profile.id, submissionText: "a" });
+  await tdb.prepare(
+    "UPDATE assignment_submissions SET status='RETURNED', score=10, feedback='x', evaluated_at=app_now(), updated_at='2000-01-01 00:00:00' WHERE id = ?"
   ).run(first.id);
-  const sub = upsertSubmission({ assignmentId: assignment.id, studentId: profile.id, submissionText: "b" });
+  const sub = await upsertSubmission({ assignmentId: assignment.id, studentId: profile.id, submissionText: "b" });
   assert.deepEqual([sub.status, sub.score, sub.feedback, sub.evaluatedAt], ["SUBMITTED", null, null, null]);
   assert.notEqual(sub.updatedAt, "2000-01-01 00:00:00");
 });

@@ -64,7 +64,7 @@ test("E1 a website enquiry appears in the CRM; a counsellor sees only the unassi
   let assignedTo = null;
   for (let i = 0; i < 40 && assignedTo !== stack.data.users.counsellor.id; i += 1) {
     const db = openDb(stack);
-    assignedTo = db.prepare("SELECT assigned_to FROM leads WHERE email = ?").get("crm.lead@example.test").assigned_to;
+    assignedTo = (await db.prepare("SELECT assigned_to FROM leads WHERE email = ?").get("crm.lead@example.test")).assigned_to;
     db.close();
     if (assignedTo !== stack.data.users.counsellor.id) await admin.page.waitForTimeout(250);
   }
@@ -82,7 +82,7 @@ test("E2 the assigned counsellor can progress their lead; a different counsellor
   await counsellor.page.getByRole("button", { name: /add note/i }).click();
   await counsellor.page.getByText("Called, wants evening batch.").waitFor();
   const db = openDb(stack);
-  assert.equal(db.prepare("SELECT status FROM leads WHERE email = ?").get("crm.lead@example.test").status, "CONTACTED");
+  assert.equal((await db.prepare("SELECT status FROM leads WHERE email = ?").get("crm.lead@example.test")).status, "CONTACTED");
   db.close();
   // counsellors can't convert or reassign (manager actions)
   assert.equal(await counsellor.page.getByLabel("Assigned to").count(), 0, "assignment control not offered to counsellors");
@@ -99,14 +99,14 @@ test("E3 lead → student conversion creates a STUDENT account that can sign in;
   await admin.page.getByRole("button", { name: /convert to student/i }).click();
   await admin.page.getByText(/at least 8|too short|minimum/i).first().waitFor();
   const db = openDb(stack);
-  assert.equal(db.prepare("SELECT COUNT(*) c FROM users WHERE email = ?").get("convert.me@example.test").c, 0);
+  assert.equal((await db.prepare("SELECT COUNT(*) c FROM users WHERE email = ?").get("convert.me@example.test")).c, 0);
 
   await admin.page.getByLabel(/Temporary password/i).fill("Temp-Passw0rd-55");
   await admin.page.getByRole("button", { name: /convert to student/i }).click();
   await admin.page.getByText(/converted|student account/i).first().waitFor({ timeout: 8000 });
-  const user = db.prepare("SELECT id, role, status FROM users WHERE email = ?").get("convert.me@example.test");
+  const user = await db.prepare("SELECT id, role, status FROM users WHERE email = ?").get("convert.me@example.test");
   assert.deepEqual({ role: user.role, status: user.status }, { role: "STUDENT", status: "ACTIVE" });
-  const lead = db.prepare("SELECT status, converted_user_id FROM leads WHERE email = ?").get("convert.me@example.test");
+  const lead = await db.prepare("SELECT status, converted_user_id FROM leads WHERE email = ?").get("convert.me@example.test");
   assert.deepEqual({ ...lead }, { status: "CONVERTED", converted_user_id: user.id });
   db.close();
 
@@ -137,7 +137,7 @@ test("E4 admin enrolls a student into a batch; duplicate enrollment is refused w
   await enroll();
   await admin.page.getByText(/already enrolled|already has|duplicate/i).first().waitFor({ timeout: 8000 });
   const db = openDb(stack);
-  const n = db.prepare("SELECT COUNT(*) c FROM batch_enrollments WHERE student_id IN (SELECT id FROM student_profiles WHERE user_id = ?)").get(stack.data.users.student.id).c;
+  const n = (await db.prepare("SELECT COUNT(*) c FROM batch_enrollments WHERE student_id IN (SELECT id FROM student_profiles WHERE user_id = ?)").get(stack.data.users.student.id)).c;
   assert.equal(n, 1, "exactly one batch enrollment exists");
   db.close();
   admin.assertClean("enrollment");
@@ -177,12 +177,12 @@ test("C2 mark-as-read works and the unread bell updates; viewing alone never mar
   const student = await as("student");
   await student.goto("/student/notifications");
   const db = openDb(stack);
-  const unreadBefore = db.prepare("SELECT COUNT(*) c FROM notifications WHERE user_id = ? AND read_at IS NULL").get(stack.data.users.student.id).c;
+  const unreadBefore = (await db.prepare("SELECT COUNT(*) c FROM notifications WHERE user_id = ? AND read_at IS NULL").get(stack.data.users.student.id)).c;
   assert.ok(unreadBefore >= 1, "viewing the page left notifications unread");
   const markBtn = student.page.getByRole("button", { name: /mark.*read/i }).first();
   await markBtn.click();
   await student.page.waitForTimeout(1200);
-  const unreadAfter = db.prepare("SELECT COUNT(*) c FROM notifications WHERE user_id = ? AND read_at IS NULL").get(stack.data.users.student.id).c;
+  const unreadAfter = (await db.prepare("SELECT COUNT(*) c FROM notifications WHERE user_id = ? AND read_at IS NULL").get(stack.data.users.student.id)).c;
   assert.equal(unreadAfter, unreadBefore - 1);
   db.close();
 });
@@ -209,7 +209,7 @@ test("C4 enrolled student opens the learning workspace, marks a lesson complete,
   await complete.click();
   await student.page.waitForTimeout(1500);
   const db = openDb(stack);
-  const before = db.prepare("SELECT COUNT(*) c FROM lesson_progress").get().c;
+  const before = (await db.prepare("SELECT COUNT(*) c FROM lesson_progress").get()).c;
   assert.ok(before >= 1, "lesson progress row stored");
   db.close();
   await student.page.reload();
@@ -249,7 +249,7 @@ test("D1 the assigned trainer sees their batch and the enrolled student; an unas
 
 test("D2 trainer cannot open another trainer's student record by URL", async () => {
   const db = openDb(stack);
-  const profile = db.prepare("SELECT id FROM student_profiles WHERE user_id = ?").get(stack.data.users.student.id);
+  const profile = await db.prepare("SELECT id FROM student_profiles WHERE user_id = ?").get(stack.data.users.student.id);
   db.close();
   const t2 = await as("trainer2");
   for (const id of [profile.id, stack.data.users.student.id]) {
@@ -274,7 +274,7 @@ test("D3 trainer notifications page works and has the email preference control",
   await t1.page.reload();
   assert.equal(await t1.page.getByLabel(/email me my notifications/i).isChecked(), false, "preference persisted");
   const db = openDb(stack);
-  assert.equal(db.prepare("SELECT email_notifications e FROM users WHERE id = ?").get(stack.data.users.trainer.id).e, 0);
+  assert.equal((await db.prepare("SELECT email_notifications e FROM users WHERE id = ?").get(stack.data.users.trainer.id)).e, 0);
   db.close();
   t1.assertClean("trainer notifications");
 });

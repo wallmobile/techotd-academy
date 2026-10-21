@@ -1,7 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import assert from "node:assert/strict";
-import Database from "better-sqlite3";
+import pg from "pg";
+
+// Same number handling as the app (src/lib/db/client.js): COUNT/SUM come back as numbers.
+pg.types.setTypeParser(20, (v) => Number(v));
+pg.types.setTypeParser(1700, (v) => Number(v));
 
 export const VIEWPORTS = {
   desktop: { width: 1280, height: 800 },
@@ -97,8 +101,46 @@ export class Session {
 
 // Direct read/write access to the e2e database, for ARRANGING state that has
 // no UI (e.g. expiring a session) and for asserting what was persisted.
-export function openDb(stack, { readonly = true } = {}) {
-  return new Database(stack.dbFile, { readonly, fileMustExist: true });
+// `prepare(sql).get/all/run(...params)` are async (await them); `?` placeholders.
+function toPositional(sql) {
+  let out = "";
+  let n = 0;
+  for (let i = 0; i < sql.length; i += 1) {
+    const ch = sql[i];
+    if (ch === "'") {
+      let j = i + 1;
+      while (j < sql.length && !(sql[j] === "'" && sql[j + 1] !== "'")) j += sql[j] === "'" ? 2 : 1;
+      out += sql.slice(i, j + 1);
+      i = j;
+    } else if (ch === "?") {
+      n += 1;
+      out += "$" + n;
+    } else out += ch;
+  }
+  return out;
+}
+
+export function openDb(stack) {
+  const client = new pg.Client({ connectionString: stack.databaseUrl });
+  // The stack drops its database at the end; a still-open helper connection must not crash the run.
+  client.on("error", () => {});
+  const connected = client.connect();
+  const run = async (sql, args) => {
+    await connected;
+    return client.query(toPositional(sql), args);
+  };
+  return {
+    prepare: (sql) => ({
+      get: async (...args) => (await run(sql, args)).rows[0],
+      all: async (...args) => (await run(sql, args)).rows,
+      run: async (...args) => ({ changes: (await run(sql, args)).rowCount }),
+    }),
+    exec: async (sql) => {
+      await connected;
+      await client.query(sql);
+    },
+    close: () => connected.then(() => client.end()).catch(() => {}),
+  };
 }
 
 export async function bodyText(page) {

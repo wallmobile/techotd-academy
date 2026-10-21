@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { tdb } from "./tdb.mjs";
 import crypto from "node:crypto";
 import { db } from "@/lib/db/client";
 import { getAdminContext, requireAdminContext } from "@/lib/admin/context";
@@ -34,7 +35,7 @@ async function redirectTarget(fn) {
   return null;
 }
 
-const userCount = () => db.prepare("SELECT COUNT(*) AS c FROM users").get().c;
+const userCount = async () => (await tdb.prepare("SELECT COUNT(*) AS c FROM users").get()).c;
 const BATCH = batches[0];
 
 // ---------------------------------------------------------------- authorization
@@ -61,7 +62,7 @@ test("page guard (direct URL access): students/trainers/other staff/anonymous ar
   assert.equal(await redirectTarget(requireAdminContext), "/trainer");
   // other staff: admitted to the /admin shell by the layout, sent back there from management pages
   await signIn(await makeUser("COUNSELLOR", "cns"));
-  assert.equal(await redirectTarget(() => requireArea("admin")), null);
+  assert.equal(await redirectTarget(async () => await requireArea("admin")), null);
   assert.equal(await redirectTarget(requireAdminContext), "/admin");
   await signIn(await makeUser("ADMIN", "adm"));
   assert.equal(await redirectTarget(requireAdminContext), null);
@@ -87,23 +88,23 @@ test("admin server actions refuse non-admins and write nothing", async () => {
   const victim = await makeUser("STUDENT", "victim");
   for (const role of ["STUDENT", "TRAINER", "COUNSELLOR"]) {
     await signIn(await makeUser(role, "intruder"));
-    const before = userCount();
+    const before = await userCount();
 
     const created = await createTrainerAction(
       null,
       form({ name: "Evil Trainer", email: `evil-${role}@example.test`, password: "Password-123", role: "SUPER_ADMIN" })
     );
     assert.equal(created.status, "error");
-    assert.equal(userCount(), before);
-    assert.equal(findUserByEmailInternal(`evil-${role}@example.test`), null);
+    assert.equal(await userCount(), before);
+    assert.equal(await findUserByEmailInternal(`evil-${role}@example.test`), null);
 
     const assigned = await assignTrainerBatchAction(null, form({ trainerId: trainer.id, batchId: BATCH.id }));
     assert.equal(assigned.status, "error");
-    assert.equal(isBatchAssignedToTrainer(trainer.id, BATCH.id), false);
+    assert.equal(await isBatchAssignedToTrainer(trainer.id, BATCH.id), false);
 
     const status = await setUserStatusAction(null, form({ userId: victim.id, status: "SUSPENDED" }));
     assert.equal(status.status, "error");
-    assert.equal(db.prepare("SELECT status FROM users WHERE id = ?").get(victim.id).status, "ACTIVE");
+    assert.equal((await tdb.prepare("SELECT status FROM users WHERE id = ?").get(victim.id)).status, "ACTIVE");
   }
   await signOut();
   assert.equal((await createTrainerAction(null, form({ name: "X Y", email: "anon@example.test", password: "Password-123" }))).status, "error");
@@ -115,7 +116,7 @@ test("user listing: search, role filter, sort and pagination", async () => {
   const tag = `zq${crypto.randomUUID().slice(0, 6)}`;
   for (let i = 0; i < 23; i += 1) {
     const u = await makeUser(i % 2 === 0 ? "STUDENT" : "TRAINER", `${tag}-${String(i).padStart(2, "0")}`);
-    db.prepare("UPDATE users SET created_at = ? WHERE id = ?").run(`2020-01-01 00:00:${String(i).padStart(2, "0")}`, u.id);
+    await tdb.prepare("UPDATE users SET created_at = ? WHERE id = ?").run(`2020-01-01 00:00:${String(i).padStart(2, "0")}`, u.id);
   }
 
   const all = await getUsersPage({ q: tag, role: "", sort: "newest", page: 1 });
@@ -169,8 +170,8 @@ test("dashboard figures come from real rows", async () => {
   assert.equal(after.stats.students, before.stats.students + 1);
   assert.equal(after.stats.trainers, before.stats.trainers + 1);
   assert.equal(after.stats.staff, before.stats.staff + 1);
-  assert.equal(after.stats.totalUsers, userCount());
-  assert.equal(after.roleDistribution.reduce((s, r) => s + r.count, 0), userCount());
+  assert.equal(after.stats.totalUsers, await userCount());
+  assert.equal(after.roleDistribution.reduce((s, r) => s + r.count, 0), await userCount());
   assert.equal(after.system.databaseOk, true);
   assert.ok(after.recentUsers.length <= 5);
 });
@@ -186,7 +187,7 @@ test("create trainer: valid input creates a TRAINER with a bcrypt hash; role fie
   } catch (error) {
     target = error.location;
   }
-  const created = findUserByEmailInternal(email);
+  const created = await findUserByEmailInternal(email);
   assert.ok(created);
   assert.equal(target, `/admin/trainers/${created.id}`);
   assert.equal(created.role, "TRAINER");
@@ -195,14 +196,14 @@ test("create trainer: valid input creates a TRAINER with a bcrypt hash; role fie
   assert.match(created.passwordHash, /^\$2[aby]\$/);
   assert.equal(await verifyPassword(secret, created.passwordHash), true);
   // plaintext appears nowhere in the users table
-  const dump = JSON.stringify(db.prepare("SELECT * FROM users WHERE id = ?").get(created.id));
+  const dump = JSON.stringify(await tdb.prepare("SELECT * FROM users WHERE id = ?").get(created.id));
   assert.ok(!dump.includes(secret));
 });
 
 test("create trainer: duplicate email and weak/invalid input are rejected", async () => {
   await signIn(await makeUser("ADMIN", "creator"));
   const existing = await makeUser("STUDENT", "taken");
-  const before = userCount();
+  const before = await userCount();
 
   const dup = await createTrainerAction(null, form({ name: "Dup Dup", email: existing.email.toUpperCase(), password: "Password-123" }));
   assert.equal(dup.status, "error");
@@ -217,7 +218,7 @@ test("create trainer: duplicate email and weak/invalid input are rejected", asyn
   assert.ok(badName.errors.name);
   const badPhone = await createTrainerAction(null, form({ name: "Bad Phone", email: "bp@example.test", phone: "abc", password: "Password-123" }));
   assert.ok(badPhone.errors.phone);
-  assert.equal(userCount(), before, "nothing was created");
+  assert.equal(await userCount(), before, "nothing was created");
 });
 
 // ------------------------------------------------------------ trainer assignment
@@ -227,17 +228,17 @@ test("trainer-batch assignment: works, rejects duplicates, bad batch and non-tra
 
   const ok = await assignTrainerBatchAction(null, form({ trainerId: trainer.id, batchId: BATCH.id }));
   assert.equal(ok.status, "success");
-  assert.equal(isBatchAssignedToTrainer(trainer.id, BATCH.id), true);
+  assert.equal(await isBatchAssignedToTrainer(trainer.id, BATCH.id), true);
 
   const dup = await assignTrainerBatchAction(null, form({ trainerId: trainer.id, batchId: BATCH.id }));
   assert.equal(dup.status, "error");
-  assert.equal(db.prepare("SELECT COUNT(*) AS c FROM trainer_batch_assignments WHERE trainer_user_id = ?").get(trainer.id).c, 1);
+  assert.equal((await tdb.prepare("SELECT COUNT(*) AS c FROM trainer_batch_assignments WHERE trainer_user_id = ?").get(trainer.id)).c, 1);
 
   assert.equal((await assignTrainerToBatch(trainer.id, "no-such-batch")).reason, "batch_not_found");
   assert.equal((await assignTrainerToBatch("no-such-user", BATCH.id)).reason, "trainer_not_found");
   const student = await makeUser("STUDENT", "notatrainer");
   assert.equal((await assignTrainerToBatch(student.id, BATCH.id)).reason, "trainer_not_found");
-  assert.equal(isBatchAssignedToTrainer(student.id, BATCH.id), false);
+  assert.equal(await isBatchAssignedToTrainer(student.id, BATCH.id), false);
 
   const detail = await getTrainerDetailForAdmin(trainer.id);
   assert.equal(detail.summary.assignedBatches, 1);
@@ -250,8 +251,8 @@ test("student detail exposes only that student and never secrets", async () => {
   await signIn(await makeUser("ADMIN", "viewer"));
   const a = await makeStudentInBatch(BATCH.id, BATCH.courseSlug, "stuA");
   const b = await makeStudentInBatch(BATCH.id, BATCH.courseSlug, "stuB");
-  const token = createSession(a.user.id).token;
-  db.prepare("INSERT INTO password_reset_tokens (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)").run(
+  const token = (await createSession(a.user.id)).token;
+  await tdb.prepare("INSERT INTO password_reset_tokens (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)").run(
     crypto.randomUUID(),
     a.user.id,
     "resethash-should-not-leak",
@@ -279,7 +280,7 @@ test("student detail exposes only that student and never secrets", async () => {
   const fresh = await makeUser("STUDENT", "fresh");
   const freshDetail = await getStudentDetailForAdmin(fresh.id);
   assert.equal(freshDetail.profile, null);
-  assert.equal(db.prepare("SELECT COUNT(*) AS c FROM student_profiles WHERE user_id = ?").get(fresh.id).c, 0);
+  assert.equal((await tdb.prepare("SELECT COUNT(*) AS c FROM student_profiles WHERE user_id = ?").get(fresh.id)).c, 0);
 });
 
 // ----------------------------------------------------------------- account status
@@ -288,7 +289,7 @@ test("account status: deactivation blocks login state, revokes sessions and resp
   const superAdmin = await makeUser("SUPER_ADMIN", "root");
   const student = await makeUser("STUDENT", "target");
   const otherAdmin = await makeUser("ADMIN", "peer");
-  const studentSession = createSession(student.id);
+  const studentSession = await createSession(student.id);
 
   await signIn(admin);
   assert.equal((await setUserStatus(admin.id, "INACTIVE")).ok, false, "can't deactivate yourself");
@@ -297,7 +298,7 @@ test("account status: deactivation blocks login state, revokes sessions and resp
   assert.equal((await setUserStatus(student.id, "BOGUS")).ok, false);
 
   assert.equal((await setUserStatus(student.id, "INACTIVE")).ok, true);
-  assert.equal(getUserBySessionToken(studentSession.token), null, "sessions revoked");
+  assert.equal(await getUserBySessionToken(studentSession.token), null, "sessions revoked");
   await signIn(student);
   assert.equal(await getCurrentUser(), null, "an inactive account can't be a current user");
 

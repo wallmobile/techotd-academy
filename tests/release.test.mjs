@@ -1,11 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { tdb } from "./tdb.mjs";
 import crypto from "node:crypto";
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import Database from "better-sqlite3";
+import { pathToFileURL } from "node:url";
+import pg from "pg";
 import { db } from "@/lib/db/client";
 import { clientIpFromHeaders, trustedProxyHops, getClientIp } from "@/lib/rateLimit";
 import { canDeliverResetEmail, deliverPasswordResetEmail, RESET_EMAIL_SUBJECT } from "@/lib/auth/resetEmail";
@@ -99,7 +101,7 @@ test("reset email: link goes to the provider only, never into the notification o
     assert.match(calls[0].body.text, new RegExp(`https://academy\\.example\\.org/reset-password\\?token=${token}`));
     assert.equal(calls[0].init.headers.Authorization, `Bearer ${EMAIL_ENV.RESEND_API_KEY}`);
   });
-  const stored = db.prepare("SELECT COUNT(*) AS c FROM notifications WHERE message LIKE ? OR title LIKE ?").get(`%${token}%`, `%${token}%`).c;
+  const stored = (await tdb.prepare("SELECT COUNT(*) AS c FROM notifications WHERE message LIKE ? OR title LIKE ?").get(`%${token}%`, `%${token}%`)).c;
   assert.equal(stored, 0);
 });
 
@@ -123,7 +125,7 @@ test("reset email: nothing is sent without a provider or without an absolute sit
 test("forgot-password in production: honest when email can't be delivered, emails the link when it can, never leaks the link", async () => {
   const user = await makeUser("STUDENT", "prodforgot");
   setRequestHeaders({ "x-forwarded-for": "192.0.2.77" });
-  const tokensFor = () => db.prepare("SELECT COUNT(*) AS c FROM password_reset_tokens WHERE user_id = ?").get(user.id).c;
+  const tokensFor = async () => (await tdb.prepare("SELECT COUNT(*) AS c FROM password_reset_tokens WHERE user_id = ?").get(user.id)).c;
 
   // no provider: tell the user, mint nothing
   await withEnv({ NODE_ENV: "production", EMAIL_PROVIDER: undefined, RESEND_API_KEY: undefined, EMAIL_FROM: undefined }, accepted, async (calls) => {
@@ -131,7 +133,7 @@ test("forgot-password in production: honest when email can't be delivered, email
     assert.equal(r.status, "error");
     assert.match(r.errors.email, /isn't available/);
     assert.equal(r.devResetPath, undefined);
-    assert.equal(tokensFor(), 0);
+    assert.equal(await tokensFor(), 0);
     assert.equal(calls.length, 0);
   });
 
@@ -147,7 +149,7 @@ test("forgot-password in production: honest when email can't be delivered, email
     assert.equal(calls.length, 1, "only the real account gets an email");
     assert.deepEqual(calls[0].body.to, [user.email]);
     assert.match(calls[0].body.text, /reset-password\?token=/);
-    assert.equal(tokensFor(), 1);
+    assert.equal(await tokensFor(), 1);
   });
 });
 
@@ -155,27 +157,27 @@ test("forgot-password in production: honest when email can't be delivered, email
 
 test("email opt-out: defaults on, honoured at queue time and after queueing, in-app unaffected", async () => {
   const user = await makeUser("STUDENT", "optout");
-  assert.equal(getEmailNotificationsEnabled(user.id), true);
+  assert.equal(await getEmailNotificationsEnabled(user.id), true);
 
   await withEnv(EMAIL_ENV, accepted, async (calls) => {
-    const on = notify({ userId: user.id, type: "SYSTEM", title: "Hello", message: "Generic message", eventKey: `t:${crypto.randomUUID()}` });
+    const on = await notify({ userId: user.id, type: "SYSTEM", title: "Hello", message: "Generic message", eventKey: `t:${crypto.randomUUID()}` });
     assert.equal(on.email, "QUEUED");
 
     // opt out AFTER the email was queued: it must not be sent
-    assert.equal(setEmailNotificationsEnabled(user.id, false), true);
+    assert.equal(await setEmailNotificationsEnabled(user.id, false), true);
     const summary = await processDeliveries({ limit: 10 });
     assert.equal(summary.sent, 0);
     assert.equal(calls.length, 0);
-    const d = getDeliveryForNotification(on.notificationId, "EMAIL");
+    const d = await getDeliveryForNotification(on.notificationId, "EMAIL");
     assert.equal(d.status, "SKIPPED");
     assert.equal(d.lastError, "user_opted_out");
 
     // new events while opted out: in-app notification still created, email skipped
-    const off = notify({ userId: user.id, type: "SYSTEM", title: "Again", message: "Another generic message", eventKey: `t:${crypto.randomUUID()}` });
+    const off = await notify({ userId: user.id, type: "SYSTEM", title: "Again", message: "Another generic message", eventKey: `t:${crypto.randomUUID()}` });
     assert.equal(off.created, true);
     assert.equal(off.email, "SKIPPED");
-    assert.equal(getDeliveryForNotification(off.notificationId, "EMAIL").lastError, "user_opted_out");
-    assert.equal(db.prepare("SELECT COUNT(*) AS c FROM notifications WHERE user_id = ?").get(user.id).c, 2);
+    assert.equal((await getDeliveryForNotification(off.notificationId, "EMAIL")).lastError, "user_opted_out");
+    assert.equal((await tdb.prepare("SELECT COUNT(*) AS c FROM notifications WHERE user_id = ?").get(user.id)).c, 2);
   });
 });
 
@@ -185,13 +187,13 @@ test("email preference action only ever changes the signed-in user", async () =>
   await signIn(me);
   // a forged userId field changes nothing; the target is always the session user
   await setEmailPreferenceAction(form({ userId: other.id, emailNotifications: "" }));
-  assert.equal(getEmailNotificationsEnabled(me.id), false);
-  assert.equal(getEmailNotificationsEnabled(other.id), true);
+  assert.equal(await getEmailNotificationsEnabled(me.id), false);
+  assert.equal(await getEmailNotificationsEnabled(other.id), true);
   await setEmailPreferenceAction(form({ emailNotifications: "on" }));
-  assert.equal(getEmailNotificationsEnabled(me.id), true);
+  assert.equal(await getEmailNotificationsEnabled(me.id), true);
   await signOut();
   await setEmailPreferenceAction(form({ emailNotifications: "" }));
-  assert.equal(getEmailNotificationsEnabled(me.id), true, "anonymous callers change nothing");
+  assert.equal(await getEmailNotificationsEnabled(me.id), true, "anonymous callers change nothing");
 });
 
 // --- CSP ----------------------------------------------------------------------
@@ -211,48 +213,54 @@ test("CSP is configured: self-only sources, no framing, no plugins, no wildcards
   assert.ok(!directive("script-src").includes("unsafe-eval"), "no eval in production builds");
 });
 
-// --- migration against a pre-existing database -------------------------------
+// --- opening a database whose schema is behind -------------------------------
 
-test("opening a database created before email_notifications existed migrates it in place and keeps the data", () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "techotd-mig-"));
-  const file = path.join(dir, "legacy.db");
-  try {
-    // A users table exactly as older builds created it (no email_notifications).
-    const legacy = new Database(file);
-    legacy.exec(`CREATE TABLE users (
-      id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE, phone TEXT,
-      password_hash TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'STUDENT', status TEXT NOT NULL DEFAULT 'ACTIVE',
-      created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')));
-      INSERT INTO users (id, name, email, password_hash) VALUES ('u1', 'Legacy User', 'legacy@example.test', 'x');`);
-    legacy.close();
+test("opening a database recorded with an older schema re-applies it in place and keeps the data", async () => {
+  const adminUrl = process.env.TEST_PG_ADMIN_URL;
+  const name = `techotd_t_${crypto.randomBytes(6).toString("hex")}`;
+  const admin = new pg.Client({ connectionString: adminUrl });
+  await admin.connect();
+  await admin.query(`CREATE DATABASE "${name}"`);
+  await admin.end();
+  const url = new URL(adminUrl);
+  url.pathname = `/${name}`;
+  const databaseUrl = url.toString();
 
-    const script = path.join(dir, "open.mjs");
-    const root = path.resolve(import.meta.dirname, "..");
-    fs.writeFileSync(
-      script,
-      `import { register } from "node:module";
-register(new URL(${JSON.stringify("file:///" + path.join(root, "tests", "loader.mjs").replace(/\\/g, "/"))}));
-await import("@/lib/db/client");
+  const root = path.resolve(import.meta.dirname, "..");
+  const script = path.join(os.tmpdir(), `techotd-open-${name}.mjs`);
+  fs.writeFileSync(
+    script,
+    `import { register } from "node:module";
+register(new URL(${JSON.stringify(pathToFileURL(path.join(root, "tests", "loader.mjs")).href)}));
+const { db, closeDb } = await import("@/lib/db/client");
+await db.get("SELECT 1 AS ok");
+await closeDb();
 `
-    );
-    const run = () =>
-      spawnSync(process.execPath, [script], {
-        cwd: root,
-        env: { ...process.env, DATABASE_URL: `file:${file.replace(/\\/g, "/")}`, NODE_ENV: "test" },
-        encoding: "utf8",
-      });
+  );
+  const open = () => spawnSync(process.execPath, [script], { cwd: root, env: { ...process.env, DATABASE_URL: databaseUrl, NODE_ENV: "test" }, encoding: "utf8" });
+  try {
+    assert.equal(open().status, 0, "first open creates the schema");
+
+    const c = new pg.Client({ connectionString: databaseUrl });
+    await c.connect();
+    await c.query("INSERT INTO users (id, name, email, password_hash) VALUES ('u1', 'Legacy User', 'legacy@example.test', 'x')");
+    // simulate a database created by an older build: the recorded schema hash no longer matches, and a table is gone
+    await c.query("UPDATE schema_meta SET value = 'old-schema' WHERE key = 'schema_hash'");
+    await c.query("DROP TABLE ai_usage");
+    await c.end();
+
     for (const attempt of [1, 2]) {
-      const r = run();
+      const r = open();
       assert.equal(r.status, 0, `open #${attempt} failed: ${r.stderr}`);
     }
-    const check = new Database(file, { readonly: true });
-    const cols = check.prepare("PRAGMA table_info(users)").all().map((c) => c.name);
-    assert.ok(cols.includes("email_notifications"));
-    const row = check.prepare("SELECT name, email_notifications FROM users WHERE id = 'u1'").get();
-    assert.deepEqual({ ...row }, { name: "Legacy User", email_notifications: 1 });
-    check.close();
+    const check = new pg.Client({ connectionString: databaseUrl });
+    await check.connect();
+    assert.equal((await check.query("SELECT name FROM users WHERE id = 'u1'")).rows[0].name, "Legacy User", "data kept");
+    assert.ok((await check.query("SELECT to_regclass('public.ai_usage') AS t")).rows[0].t, "the missing table was recreated");
+    assert.notEqual((await check.query("SELECT value FROM schema_meta WHERE key = 'schema_hash'")).rows[0].value, "old-schema", "the recorded schema version was updated");
+    await check.end();
   } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(script, { force: true });
   }
 });
 

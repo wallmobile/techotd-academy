@@ -91,7 +91,7 @@ test("PW2 validation and wrong-password feedback; passwords are masked, never ec
     assert.equal(await s.page.locator("#password").getAttribute("type"), "text");
 
     const d = openDb(stack);
-    assert.equal(d.prepare("SELECT COUNT(*) c FROM audit_log WHERE action = 'account.password_changed'").get().c, 0, "nothing changed");
+    assert.equal((await d.prepare("SELECT COUNT(*) c FROM audit_log WHERE action = 'account.password_changed'").get()).c, 0, "nothing changed");
     d.close();
     s.assertClean("password validation");
   } finally {
@@ -129,7 +129,7 @@ test("PW3 successful change: still signed in here, signed out everywhere else, o
       await fresh.close();
     }
     const d = openDb(stack);
-    const rows = d.prepare("SELECT detail FROM audit_log WHERE action = 'account.password_changed' AND entity_id = ?").all(stack.data.users.accountant.id);
+    const rows = await d.prepare("SELECT detail FROM audit_log WHERE action = 'account.password_changed' AND entity_id = ?").all(stack.data.users.accountant.id);
     d.close();
     assert.equal(rows.length, 1);
     assert.ok(!rows[0].detail.includes(NEW));
@@ -155,7 +155,7 @@ test("PW4 guessing the current password is throttled in the UI", async () => {
     await s.page.getByRole("button", { name: "Change password" }).click();
     await s.page.getByText(/Too many attempts/).waitFor();
     const d = openDb(stack);
-    assert.equal(d.prepare("SELECT COUNT(*) c FROM audit_log WHERE action = 'account.password_changed' AND entity_id = ?").get(stack.data.users.placement.id).c, 0);
+    assert.equal((await d.prepare("SELECT COUNT(*) c FROM audit_log WHERE action = 'account.password_changed' AND entity_id = ?").get(stack.data.users.placement.id)).c, 0);
     d.close();
   } finally {
     await s.close();

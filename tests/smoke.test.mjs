@@ -18,14 +18,14 @@ test("smoke: student dashboard + assignments for an enrolled student", async () 
   const { batchA } = ensureSecondBatch();
   const trainer = await makeTrainerForBatch(batchA.id);
   const { user } = await makeStudentInBatch(batchA.id, batchA.courseSlug);
-  const a = createAssignment({
+  const a = await createAssignment({
     courseSlug: batchA.courseSlug,
     batchId: batchA.id,
     title: "Smoke",
     status: "PUBLISHED",
     createdBy: trainer.id,
   });
-  createAssignment({
+  await createAssignment({
     courseSlug: batchA.courseSlug,
     batchId: batchA.id,
     title: "Hidden draft",
@@ -45,14 +45,14 @@ test("smoke: trainer dashboard, schedule, attendance and assignments (and attend
   const trainer = await makeTrainerForBatch(batchA.id);
   const otherTrainer = await makeTrainerForBatch(batchB.id);
   const { profile } = await makeStudentInBatch(batchA.id, batchA.courseSlug);
-  createAssignment({
+  await createAssignment({
     courseSlug: batchA.courseSlug,
     batchId: batchA.id,
     title: "T",
     status: "PUBLISHED",
     createdBy: trainer.id,
   });
-  const session = createClassSession({
+  const session = await createClassSession({
     batchId: batchA.id,
     title: "Intro",
     sessionDate: "2030-01-01",

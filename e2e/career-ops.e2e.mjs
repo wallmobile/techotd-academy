@@ -42,7 +42,11 @@ test("H1 placement manager drafts a job; invalid input is rejected; students can
   await place.page.getByRole("button", { name: /create job/i }).click();
   await place.page.waitForTimeout(600);
   assert.match(await bodyText(place.page), /required|title|enter/i);
-  assert.equal((() => { const d = db(); const n = d.prepare("SELECT COUNT(*) c FROM jobs").get().c; d.close(); return n; })(), 0);
+  {
+    const d = db();
+    assert.equal((await d.prepare("SELECT COUNT(*) c FROM jobs").get()).c, 0);
+    d.close();
+  }
 
   await place.page.getByLabel("Job title").fill("Junior React Developer");
   await place.page.getByLabel("Company").fill("Acme Labs");
@@ -88,7 +92,7 @@ test("H3 student applies once; a second application is impossible; staff see the
   await apply.click();
   await student.page.waitForTimeout(1200);
   let d = db();
-  assert.equal(d.prepare("SELECT COUNT(*) c FROM job_applications").get().c, 1);
+  assert.equal((await d.prepare("SELECT COUNT(*) c FROM job_applications").get()).c, 1);
   d.close();
   await student.goto(`/student/jobs/${state.jobId}`);
   assert.equal(await student.page.getByRole("button", { name: /^apply/i }).count(), 0, "apply control is gone after applying");
@@ -111,10 +115,10 @@ test("H4 status changes notify the student with generic text; placement needs ex
   await select.locator("xpath=ancestor::form").getByRole("button").first().click();
   await place.page.waitForTimeout(1200);
   let d = db();
-  const app = d.prepare("SELECT status, placement_confirmed_at FROM job_applications").get();
+  const app = await d.prepare("SELECT status, placement_confirmed_at FROM job_applications").get();
   assert.notEqual(app.status, "APPLIED");
   assert.equal(app.placement_confirmed_at, null, "a status change is not a placement");
-  const n = d.prepare("SELECT message FROM notifications WHERE user_id = ? ORDER BY created_at DESC").all(stack.data.users.student.id);
+  const n = await d.prepare("SELECT message FROM notifications WHERE user_id = ? ORDER BY created_at DESC").all(stack.data.users.student.id);
   d.close();
   assert.ok(n.length >= 1);
   assert.ok(n.every((r) => !/Acme|Kubernetes|cover|salary/i.test(r.message)));
@@ -122,7 +126,7 @@ test("H4 status changes notify the student with generic text; placement needs ex
 
 test("H5 a deadline in the past hides the job from students; closing keeps applications", async () => {
   const d = db({ readonly: false });
-  d.prepare("UPDATE jobs SET apply_deadline = date('now', '-2 day') WHERE id = ?").run(state.jobId);
+  await d.prepare("UPDATE jobs SET apply_deadline = to_char(timezone('utc', now()) - interval '2 days', 'YYYY-MM-DD') WHERE id = ?").run(state.jobId);
   d.close();
   const student = await as("student2");
   await student.goto("/student/jobs");
@@ -147,7 +151,7 @@ test("H6 counsellor and accountant cannot manage jobs", async () => {
 
 test("I1 with no provider, notifications are in-app only and each email is recorded as SKIPPED, never SENT", async () => {
   const d = db();
-  const rows = d.prepare("SELECT status, last_error, COUNT(*) c FROM notification_deliveries GROUP BY status, last_error").all();
+  const rows = await d.prepare("SELECT status, last_error, COUNT(*) c FROM notification_deliveries GROUP BY status, last_error").all();
   d.close();
   assert.ok(rows.length > 0, "deliveries were recorded");
   for (const r of rows) {
@@ -164,7 +168,7 @@ test("I2 the delivery dashboard says email isn't configured and honestly reports
   assert.match(text, /WhatsApp\s+Not available/i, "WhatsApp is never presented as working");
   assert.match(text, /SENT\s+0\s+Accepted by provider/i, "nothing is reported as sent");
   const d = db();
-  assert.equal(d.prepare("SELECT COUNT(*) c FROM notification_deliveries WHERE status = 'SENT'").get().c, 0);
+  assert.equal((await d.prepare("SELECT COUNT(*) c FROM notification_deliveries WHERE status = 'SENT'").get()).c, 0);
   d.close();
   admin.assertClean("deliveries");
 });
@@ -190,7 +194,7 @@ test("J1 analytics figures match the database; custom range works; invalid range
   await admin.goto("/admin/analytics?preset=last30");
   const text = await bodyText(admin.page);
   const d = db();
-  const regs = d.prepare("SELECT COUNT(*) c FROM users WHERE role = 'STUDENT'").get().c;
+  const regs = (await d.prepare("SELECT COUNT(*) c FROM users WHERE role = 'STUDENT'").get()).c;
   d.close();
   assert.ok(text.includes(String(regs)), "registrations figure appears");
   assert.match(text, /Fees & payments/);
@@ -278,7 +282,7 @@ test("K1 assistant is honest when unconfigured: no fake answers, no provider cal
   const ask = student.page.getByRole("button", { name: /^ask/i });
   if (await ask.count()) assert.equal(await ask.first().isDisabled(), true, "ask control disabled while unconfigured");
   const d = db();
-  assert.equal(d.prepare("SELECT COUNT(*) c FROM ai_usage").get().c, 0);
+  assert.equal((await d.prepare("SELECT COUNT(*) c FROM ai_usage").get()).c, 0);
   d.close();
 });
 
