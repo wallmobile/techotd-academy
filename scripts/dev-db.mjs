@@ -84,13 +84,25 @@ async function start() {
       process.exit(1);
     }
   } else {
-    const log = fs.openSync(LOG_FILE, "a");
-    const child = spawn(path.join(bin, `postgres${EXE}`), ["-D", DATA_DIR, "-p", String(PORT), "-c", "listen_addresses=127.0.0.1", "-c", "unix_socket_directories="], {
-      detached: true,
-      stdio: ["ignore", log, log],
-      windowsHide: true,
-    });
-    child.unref();
+    const args = ["-D", DATA_DIR, "-p", String(PORT), "-c", "listen_addresses=127.0.0.1", "-c", "unix_socket_directories="];
+    if (process.platform === "win32") {
+      // On Windows the server must own a (hidden) console: started without one, every
+      // backend it launches for a new connection would pop up its own terminal window.
+      // Start-Process -WindowStyle Hidden gives it a hidden console that survives this script.
+      const quoted = [...args, "-c", "logging_collector=on", "-c", `log_directory=${path.join(ROOT, "data", "pg-logs")}`]
+        .map((a) => (/[\s"]/.test(a) || a === "" ? `"${a.replace(/"/g, '\\"')}"` : a))
+        .join(" ");
+      const ps = `Start-Process -FilePath '${path.join(bin, `postgres${EXE}`).replace(/'/g, "''")}' -ArgumentList '${quoted.replace(/'/g, "''")}' -WindowStyle Hidden`;
+      const r = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", ps], { stdio: "ignore", windowsHide: true, timeout: 60_000 });
+      if (r.status !== 0) {
+        console.error("Could not start PostgreSQL (PowerShell Start-Process failed).");
+        process.exit(1);
+      }
+    } else {
+      const log = fs.openSync(LOG_FILE, "a");
+      const child = spawn(path.join(bin, `postgres${EXE}`), args, { detached: true, stdio: ["ignore", log, log] });
+      child.unref();
+    }
     const deadline = Date.now() + 30_000;
     while (!(await canQuery())) {
       if (Date.now() > deadline) {

@@ -18,6 +18,7 @@ data/*.db-wal
 data/*.db-shm
 data/pg/
 data/pg.log
+data/pg-logs/
 
 .DS_Store
 *.pem
