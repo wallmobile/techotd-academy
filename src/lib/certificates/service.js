@@ -56,7 +56,7 @@ const fail = (reason, extra = {}) => ({ ok: false, reason, message: certificateM
 export function verificationUrl(token) {
   const configured = process.env.NEXT_PUBLIC_SITE_URL;
   if (!configured && process.env.NODE_ENV === "production") return `/verify-certificate/${token}`;
-  const base = (configured || "https://academy.techotd.com").replace(/\/+$/, "");
+  const base = (configured || "https://academy.techotd.in").replace(/\/+$/, "");
   return `${base}/verify-certificate/${token}`;
 }
 

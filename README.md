@@ -603,7 +603,7 @@ Findings from the pre-Phase-10.7 audit and what was done about them:
 - **robots.txt (changed).** `/admin`, `/student`, `/trainer` and
   `/verify-certificate` are disallowed in addition to being `noindex`.
 - **Site URL.** Set `NEXT_PUBLIC_SITE_URL` in production. Without it, outside
-  production the placeholder `https://academy.techotd.com` is used for
+  production the placeholder `https://academy.techotd.in` is used for
   metadata, and in production certificates carry only the site-relative
   verification path instead of a guessed domain.
 - **Secrets** are read only from server environment variables

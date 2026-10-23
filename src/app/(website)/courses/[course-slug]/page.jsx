@@ -74,7 +74,7 @@ export default async function CourseDetailPage({ params }) {
     provider: {
       "@type": "Organization",
       name: "TechOTD Academy",
-      sameAs: "https://academy.techotd.com",
+      sameAs: process.env.NEXT_PUBLIC_SITE_URL || "https://academy.techotd.in",
     },
   };
 

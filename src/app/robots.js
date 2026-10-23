@@ -3,7 +3,7 @@
 export const dynamic = "force-dynamic";
 
 export default function robots() {
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://academy.techotd.com";
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://academy.techotd.in";
 
   return {
     rules: {

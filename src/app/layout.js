@@ -1,7 +1,7 @@
 import "./globals.css";
 import { MotionProvider } from "@/components/shared/MotionProvider";
 
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://academy.techotd.com";
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://academy.techotd.in";
 
 export const metadata = {
   metadataBase: new URL(siteUrl),

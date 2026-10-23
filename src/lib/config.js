@@ -6,7 +6,7 @@
 // that no value leaks. Used at server start (src/instrumentation.js) and by the
 // database client for its path rules.
 
-const PRODUCTION_DEFAULT_SITE = "https://academy.techotd.com";
+const PRODUCTION_DEFAULT_SITE = "https://academy.techotd.in";
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
 
 const filled = (env, name) => typeof env[name] === "string" && env[name].trim() !== "";

@@ -5,7 +5,7 @@ import { trainingModes } from "@/data/trainingModes";
 export const dynamic = "force-dynamic";
 
 export default async function sitemap() {
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://academy.techotd.com";
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://academy.techotd.in";
   const lastModified = new Date();
 
   const staticRoutes = ["/", "/courses", "/batches", "/trainers", "/careers", "/blog", "/about", "/book-demo", "/enquiry"];
