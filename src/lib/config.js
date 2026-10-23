@@ -154,6 +154,21 @@ export function inspectEnvironment(env = process.env, { builtSiteUrl } = {}) {
     consequence: "no email is sent (in-app notifications still work) and password reset by email is unavailable",
   });
 
+  // --- new-lead alert recipient (optional; needs the email provider above)
+  if (filled(env, "LEAD_ALERT_EMAIL")) {
+    if (!/^[^\s@<>()",;:]+@[^\s@<>()",;:]+\.[^\s@<>()",;:]+$/.test(String(env.LEAD_ALERT_EMAIL).trim())) {
+      mark("LEAD_ALERT_EMAIL", "invalid");
+      warnings.push("LEAD_ALERT_EMAIL is not a single valid email address: new-lead alert emails are not sent.");
+    } else {
+      mark("LEAD_ALERT_EMAIL", "present");
+      if (["EMAIL_PROVIDER", "RESEND_API_KEY", "EMAIL_FROM"].some((n) => !filled(env, n))) {
+        warnings.push("LEAD_ALERT_EMAIL is set but email (Resend) is not fully configured: new-lead alert emails are not sent.");
+      }
+    }
+  } else {
+    mark("LEAD_ALERT_EMAIL", "missing");
+  }
+
   // --- AI
   group(env, vars, warnings, {
     label: "AI assistant",

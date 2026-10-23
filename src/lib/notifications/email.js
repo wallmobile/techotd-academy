@@ -29,7 +29,7 @@ export function isValidRecipient(address) {
   return typeof address === "string" && address.length <= 254 && EMAIL_PATTERN.test(address);
 }
 
-function escapeHtml(text) {
+export function escapeHtml(text) {
   return String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
@@ -50,9 +50,10 @@ export function buildEmailContent({ title, message, link }) {
  * Sends one email. Never throws. Returns
  *   { ok: true, providerMessageId }
  *   { ok: false, retryable: boolean, code }   // code is a short machine code
+ * `replyTo` is optional and dropped unless it is a valid address.
  * `fetchImpl` is injectable for tests.
  */
-export async function sendEmail({ to, subject, text, html }, { config = getEmailConfig(), fetchImpl = globalThis.fetch } = {}) {
+export async function sendEmail({ to, subject, text, html, replyTo }, { config = getEmailConfig(), fetchImpl = globalThis.fetch } = {}) {
   if (!config) return { ok: false, retryable: false, code: "provider_not_configured" };
   if (!isValidRecipient(to)) return { ok: false, retryable: false, code: "invalid_recipient" };
 
@@ -62,7 +63,14 @@ export async function sendEmail({ to, subject, text, html }, { config = getEmail
     const response = await fetchImpl(RESEND_ENDPOINT, {
       method: "POST",
       headers: { Authorization: `Bearer ${config.apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ from: config.from, to: [to], subject, text, html }),
+      body: JSON.stringify({
+        from: config.from,
+        to: [to],
+        subject,
+        text,
+        html,
+        ...(isValidRecipient(replyTo) ? { reply_to: replyTo } : {}),
+      }),
       signal: controller.signal,
     });
     if (response.ok) {

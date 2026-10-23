@@ -9,8 +9,9 @@
  *
  * `ok: true` is returned only after the database write succeeded (or the
  * request was an accidental duplicate of one that already did). It never
- * claims a counsellor was notified or any message was sent — no email/SMS
- * integration exists.
+ * claims a counsellor was notified: the optional new-lead alert email
+ * (LEAD_ALERT_EMAIL, see src/lib/crm/leadAlert.js) is sent best-effort
+ * after the response, and nothing is sent to the visitor.
  */
 
 import { KNOWN_SOURCES } from "@/constants/enquirySources";

@@ -4,6 +4,7 @@ import { tdb } from "./tdb.mjs";
 import crypto from "node:crypto";
 import { db } from "@/lib/db/client";
 import { submitLead } from "@/lib/crm/submit";
+import { buildLeadAlertEmail, canSendLeadAlert, sendLeadAlert } from "@/lib/crm/leadAlert";
 import { submitEnquiry } from "@/lib/enquiry";
 import { getCrmContext, requireCrmContext } from "@/lib/crm/context";
 import {
@@ -182,6 +183,68 @@ test("an accidental double-submit collapses to one lead; a genuine repeat enquir
   await tdb.prepare("UPDATE leads SET created_at = app_now('-10 minutes') WHERE email = ?").run(p.email.toLowerCase());
   assert.equal((await submitLead(p, "enquiry")).ok, true);
   assert.equal((await tdb.prepare("SELECT COUNT(*) AS c FROM leads WHERE email = ?").get(p.email.toLowerCase())).c, 3);
+});
+
+// ------------------------------------------------------------ new-lead alert email
+test("onCreated fires once per new lead (not for a collapsed duplicate) and can't fail the submission", async () => {
+  const seen = [];
+  const p = payload();
+  assert.equal((await submitLead(p, "book-demo", { onCreated: (lead) => seen.push(lead) })).ok, true);
+  assert.equal((await submitLead(p, "book-demo", { onCreated: (lead) => seen.push(lead) })).ok, true);
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0].email, p.email.toLowerCase());
+  assert.equal(seen[0].source, "BOOK_DEMO");
+
+  const throwing = () => {
+    throw new Error("boom");
+  };
+  assert.equal((await submitLead(payload(), "enquiry", { onCreated: throwing })).ok, true);
+});
+
+test("the lead alert goes to LEAD_ALERT_EMAIL with Reply-To set to the visitor and escaped content", async () => {
+  const env = {
+    EMAIL_PROVIDER: "resend",
+    RESEND_API_KEY: "re_test_key_do_not_log",
+    EMAIL_FROM: "Academy <no-reply@example.test>",
+    LEAD_ALERT_EMAIL: "alerts@example.test",
+    NEXT_PUBLIC_SITE_URL: "https://academy.example.test",
+  };
+  const saved = Object.fromEntries(Object.keys(env).map((k) => [k, process.env[k]]));
+  Object.assign(process.env, env);
+  const calls = [];
+  const fetchImpl = async (url, init) => {
+    calls.push({ url, body: JSON.parse(init.body) });
+    return new Response(JSON.stringify({ id: "msg_1" }), { status: 200 });
+  };
+  try {
+    assert.equal(canSendLeadAlert(), true);
+    const lead = await seedLead({ name: "Ravi <b>", message: "Call me <script>x</script>", courseSlug: COURSE });
+    assert.deepEqual(await sendLeadAlert(lead, { fetchImpl }), { ok: true });
+    assert.equal(calls.length, 1);
+    const sent = calls[0].body;
+    assert.deepEqual(sent.to, ["alerts@example.test"]);
+    assert.equal(sent.reply_to, lead.email);
+    assert.match(sent.subject, /^New Enquiry: Ravi <b>$/);
+    assert.ok(sent.html.includes("Ravi &lt;b&gt;") && !sent.html.includes("<script>"), "visitor text is escaped");
+    assert.ok(sent.text.includes(lead.phone) && sent.text.includes(`https://academy.example.test/admin/leads/${lead.id}`));
+
+    process.env.LEAD_ALERT_EMAIL = "not an email";
+    assert.equal(canSendLeadAlert(), false);
+    assert.deepEqual(await sendLeadAlert(lead, { fetchImpl }), { ok: false, code: "recipient_not_configured" });
+    assert.equal(calls.length, 1, "nothing sent without a valid recipient");
+  } finally {
+    for (const [k, v] of Object.entries(saved)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  }
+});
+
+test("buildLeadAlertEmail labels Book Demo requests and omits empty fields", () => {
+  const { subject, text } = buildLeadAlertEmail({ name: "Meera", phone: "9876543210", email: "m@example.test", source: "BOOK_DEMO", origin: "homepage" });
+  assert.equal(subject, "New Book Demo request: Meera");
+  assert.ok(text.includes("Form: Book Demo request (from homepage)"));
+  assert.ok(!/Course:|Message:|Batch:/.test(text));
 });
 
 test("when the database write fails the visitor gets a safe error, never success", async () => {
