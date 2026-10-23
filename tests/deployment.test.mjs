@@ -67,6 +67,22 @@ test("config: the production environment report names problems but never prints 
   assert.ok(report.warnings.some((w) => /no payment gateway is integrated/.test(w)));
 });
 
+test("config: LEAD_ALERT_EMAIL is checked and warns when it can't actually send", () => {
+  const base = { NODE_ENV: "production", NEXT_PUBLIC_SITE_URL: "https://staging.example.org", DATABASE_URL: GOOD_DB, TRUSTED_PROXY_HOPS: "1" };
+  const email = { EMAIL_PROVIDER: "resend", RESEND_API_KEY: "re_x", EMAIL_FROM: "Academy <no-reply@example.org>" };
+
+  const ready = inspectEnvironment({ ...base, ...email, LEAD_ALERT_EMAIL: "leads@example.org" });
+  assert.equal(ready.vars.LEAD_ALERT_EMAIL, "present");
+  assert.deepEqual(ready.warnings, []);
+
+  const noProvider = inspectEnvironment({ ...base, LEAD_ALERT_EMAIL: "leads@example.org" });
+  assert.ok(noProvider.warnings.some((w) => /LEAD_ALERT_EMAIL is set but email \(Resend\) is not fully configured/.test(w)));
+
+  const bad = inspectEnvironment({ ...base, ...email, LEAD_ALERT_EMAIL: "a@x.org, b@y.org" });
+  assert.equal(bad.vars.LEAD_ALERT_EMAIL, "invalid");
+  assert.ok(bad.warnings.some((w) => /LEAD_ALERT_EMAIL is not a single valid email address/.test(w)));
+});
+
 test("config: a clean production setup has no errors and no warnings; an empty one fails on the database and warns about the gaps", () => {
   const good = inspectEnvironment({ NODE_ENV: "production", NEXT_PUBLIC_SITE_URL: "https://staging.example.org", DATABASE_URL: GOOD_DB, TRUSTED_PROXY_HOPS: "1" });
   assert.deepEqual([good.ok, good.errors, good.warnings], [true, [], []]);
@@ -146,7 +162,7 @@ test("config: a build made with a different (or no) NEXT_PUBLIC_SITE_URL than th
   assert.match(diff.errors[0], /differs between build and runtime \(this build uses https:\/\/a\.example\.org, the environment says https:\/\/b\.example\.org\)/);
   const noBuild = check("https://b.example.org", "");
   assert.equal(noBuild.ok, false);
-  assert.match(noBuild.errors[0], /built-in default https:\/\/academy\.techotd\.com/, "a build with no value falls back to the production domain");
+  assert.match(noBuild.errors[0], /built-in default https:\/\/academy\.techotd\.in/, "a build with no value falls back to the production domain");
   assert.equal(check(undefined, "https://a.example.org").ok, true, "built with a value, runtime var absent: the baked value is what counts");
   const both = check(undefined, "");
   assert.equal(both.ok, true);
