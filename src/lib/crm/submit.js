@@ -25,7 +25,10 @@ function str(value, max) {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
 }
 
-export async function submitLead(payload, variant) {
+// `onCreated(lead)` runs once a genuinely new lead is stored (not for a
+// collapsed duplicate); it must not throw and must not delay the response
+// (the Server Action uses it to schedule the new-lead alert email).
+export async function submitLead(payload, variant, { onCreated } = {}) {
   if (!payload || typeof payload !== "object" || !VARIANTS.includes(variant)) {
     return { ok: false, error: INVALID_MESSAGE };
   }
@@ -90,7 +93,16 @@ export async function submitLead(payload, variant) {
     // Collapse an accidental double-submit (identical request within a
     // minute) into the lead already stored; a genuine later enquiry is
     // always a new lead.
-    if (!await findRecentDuplicateLead(lead)) await createLead(lead);
+    if (!await findRecentDuplicateLead(lead)) {
+      const created = await createLead(lead);
+      if (created && onCreated) {
+        try {
+          onCreated(created);
+        } catch {
+          // A notification problem must never fail a lead that is already saved.
+        }
+      }
+    }
     return { ok: true, receivedAt: new Date().toISOString() };
   } catch (error) {
     // Safe diagnostics only: no SQL text, paths, or submitted personal data.
