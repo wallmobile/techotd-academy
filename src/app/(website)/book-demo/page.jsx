@@ -3,6 +3,7 @@ import { EnquiryShell } from "@/components/enquiry/EnquiryShell";
 import { getCourse, listCourses, listBatches } from "@/lib/catalog";
 import { getTrainingModeBySlug } from "@/data/trainingModes";
 import { KNOWN_SOURCES } from "@/lib/enquiry";
+import { shareImages } from "@/constants/seo";
 
 export const metadata = {
   title: "Book a Free Counselling Session",
@@ -14,6 +15,7 @@ export const metadata = {
     description:
       "Book a free counselling session to discuss course options, learning modes and batch availability with the TechOTD Academy team.",
     url: "/book-demo",
+    images: shareImages,
   },
 };
 
