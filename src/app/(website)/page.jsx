@@ -18,7 +18,8 @@ import { FAQSection } from "@/components/home/FAQSection";
 import { FinalCTA } from "@/components/home/FinalCTA";
 
 export const metadata = {
-  title: "TechOTD Academy | Learn. Build. Grow.",
+  // absolute: the layout's "%s | TechOTD Academy" template would repeat the name
+  title: { absolute: "TechOTD Academy | Learn. Build. Grow." },
   description:
     "Learn industry-ready technology skills through expert-led online and classroom training, practical projects and career-focused learning.",
 };
