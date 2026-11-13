@@ -15,6 +15,7 @@ import { CareerSupport } from "@/components/courses/CareerSupport";
 import { CourseFAQ } from "@/components/courses/CourseFAQ";
 import { RelatedCourses } from "@/components/courses/RelatedCourses";
 import { CourseCTA } from "@/components/courses/CourseCTA";
+import { shareImages } from "@/constants/seo";
 
 const SUBNAV_ITEMS = [
   { id: "overview", label: "Overview" },
@@ -52,6 +53,7 @@ export async function generateMetadata({ params }) {
       title,
       description: course.shortDescription,
       url: `/courses/${course.slug}`,
+      images: shareImages,
     },
   };
 }

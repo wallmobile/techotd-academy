@@ -3,6 +3,7 @@ import { EnquiryShell } from "@/components/enquiry/EnquiryShell";
 import { getCourse, listCourses, listBatches } from "@/lib/catalog";
 import { getTrainingModeBySlug } from "@/data/trainingModes";
 import { KNOWN_SOURCES } from "@/lib/enquiry";
+import { shareImages } from "@/constants/seo";
 
 export const metadata = {
   title: "Enquiry",
@@ -14,6 +15,7 @@ export const metadata = {
     description:
       "Send an enquiry about TechOTD Academy courses, training modes or batches and our team will get back to you.",
     url: "/enquiry",
+    images: shareImages,
   },
 };
 

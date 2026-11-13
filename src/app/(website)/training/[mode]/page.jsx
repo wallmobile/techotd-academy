@@ -7,6 +7,7 @@ import { TrainingSupport } from "@/components/training/TrainingSupport";
 import { RelatedTrainingCourses } from "@/components/training/RelatedTrainingCourses";
 import { TrainingFAQ } from "@/components/training/TrainingFAQ";
 import { TrainingCTA } from "@/components/training/TrainingCTA";
+import { shareImages } from "@/constants/seo";
 
 export function generateStaticParams() {
   return trainingModes.map((mode) => ({ mode: mode.slug }));
@@ -32,6 +33,7 @@ export async function generateMetadata({ params }) {
       title,
       description: trainingMode.shortDescription,
       url: `/training/${trainingMode.slug}`,
+      images: shareImages,
     },
   };
 }

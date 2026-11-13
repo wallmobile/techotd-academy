@@ -4,6 +4,7 @@ import { AdminShell } from "@/components/admin/AdminShell";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { AdminStatsGrid } from "@/components/admin/AdminStatsGrid";
 import { BarChart } from "@/components/admin/BarChart";
+import { FILTER_BAR_CLASS } from "@/components/admin/AdminListControls";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
@@ -18,6 +19,14 @@ export const metadata = {
   title: "Analytics & Reports",
   robots: { index: false, follow: false },
 };
+
+const DOWNLOAD_LINK =
+  "inline-flex h-9 items-center gap-2 rounded-button border border-border bg-white px-3.5 font-medium text-text shadow-soft transition-colors hover:border-primary/50 hover:text-primary";
+const downloadIcon = (
+  <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+    <path d="M10 3v10m0 0l-4-4m4 4l4-4M4 16h12" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
 
 const sum = (rows, key = "amount") => rows.reduce((s, r) => s + Number(r[key] || 0), 0);
 
@@ -37,7 +46,7 @@ export default async function AdminAnalyticsPage({ searchParams }) {
           description={`${range.from} to ${range.to} (UTC days, inclusive) · generated ${report.generatedAt.slice(0, 16).replace("T", " ")} UTC`}
         />
 
-        <form method="get" action="/admin/analytics" className="flex flex-col gap-3">
+        <form method="get" action="/admin/analytics" className={`${FILTER_BAR_CLASS} flex flex-col gap-3`}>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-4 sm:items-end">
             <Select label="Period" id="preset" name="preset" defaultValue={range.preset}>
               {PRESETS.map((p) => (
@@ -58,11 +67,13 @@ export default async function AdminAnalyticsPage({ searchParams }) {
         </form>
 
         {canExport && !range.error && (
-          <div className="flex flex-wrap gap-4 text-sm">
-            <a href={`/admin/analytics/export?type=summary&${query}`} className="font-medium text-primary hover:text-primary-hover">
+          <div className="flex flex-wrap gap-2.5 text-sm">
+            <a href={`/admin/analytics/export?type=summary&${query}`} className={DOWNLOAD_LINK}>
+              {downloadIcon}
               Download summary (CSV)
             </a>
-            <a href={`/admin/analytics/export?type=daily&${query}`} className="font-medium text-primary hover:text-primary-hover">
+            <a href={`/admin/analytics/export?type=daily&${query}`} className={DOWNLOAD_LINK}>
+              {downloadIcon}
               Download daily breakdown (CSV)
             </a>
           </div>

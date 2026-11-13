@@ -24,6 +24,7 @@ const PATHS = {
   reports: "M4 16V9m4 7V4m4 12v-5m4 5V7",
   placement: "M3 7h14v9H3V7zm4 0V5a1 1 0 011-1h4a1 1 0 011 1v2",
   content: "M4 3h12v14H4V3zm3 4h6M7 10h6M7 13h3",
+  trainers: "M3 4h14v9H3V4zm4.5 13L10 13l2.5 4M6.5 7.5h4M6.5 10h7",
   settings: "M10 12.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5zM10 2.5v2M10 15.5v2M2.5 10h2M15.5 10h2M4.7 4.7l1.4 1.4M13.9 13.9l1.4 1.4M4.7 15.3l1.4-1.4M13.9 6.1l1.4-1.4",
 };
 

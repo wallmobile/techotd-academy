@@ -1,5 +1,6 @@
 import "./globals.css";
 import { MotionProvider } from "@/components/shared/MotionProvider";
+import { shareImages } from "@/constants/seo";
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://academy.techotd.in";
 
@@ -18,6 +19,7 @@ export const metadata = {
     description:
       "Professional IT training, live online and hybrid classes, practical projects, and placement support.",
     url: siteUrl,
+    images: shareImages,
   },
   robots: {
     index: true,

@@ -119,8 +119,8 @@ export default async function AdminFeeDetailPage({ params }) {
           )}
         </Card>
 
-        {!cancelled && (
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-2">
+          {!cancelled && (
             <Card>
               <h2 className="text-sm font-semibold text-dark">Edit fee</h2>
               <div className="mt-4">
@@ -133,7 +133,10 @@ export default async function AdminFeeDetailPage({ params }) {
                 />
               </div>
             </Card>
-            {!hasCounted && (
+          )}
+
+          <div className={`flex flex-col gap-6${cancelled ? " lg:col-span-2" : ""}`}>
+            {!cancelled && !hasCounted && (
               <Card>
                 <h2 className="text-sm font-semibold text-dark">Cancel fee</h2>
                 <div className="mt-4">
@@ -141,26 +144,26 @@ export default async function AdminFeeDetailPage({ params }) {
                 </div>
               </Card>
             )}
-          </div>
-        )}
 
-        <Card>
-          <h2 className="text-sm font-semibold text-dark">Change history</h2>
-          {history.length === 0 ? (
-            <p className="mt-3 text-sm text-muted">No changes recorded.</p>
-          ) : (
-            <ul className="mt-3 divide-y divide-border text-sm">
-              {history.map((h, i) => (
-                <li key={i} className="flex flex-wrap justify-between gap-2 py-2">
-                  <span className="text-text">{h.action.replaceAll("_", " ").toLowerCase()}</span>
-                  <span className="text-xs text-muted">
-                    {h.actorName || "System"} · {formatDbDate(h.at)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
+            <Card>
+              <h2 className="text-sm font-semibold text-dark">Change history</h2>
+              {history.length === 0 ? (
+                <p className="mt-3 text-sm text-muted">No changes recorded.</p>
+              ) : (
+                <ul className="mt-3 divide-y divide-border text-sm">
+                  {history.map((h, i) => (
+                    <li key={i} className="flex flex-wrap justify-between gap-2 py-2">
+                      <span className="text-text">{h.action.replaceAll("_", " ").toLowerCase()}</span>
+                      <span className="text-xs text-muted">
+                        {h.actorName || "System"} · {formatDbDate(h.at)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Card>
+          </div>
+        </div>
       </div>
     </AdminShell>
   );

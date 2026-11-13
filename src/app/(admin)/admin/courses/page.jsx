@@ -4,7 +4,7 @@ import { getCoursesPage, getCourseFormOptions } from "@/lib/admin/courses";
 import { parseCourseParams, COURSE_SORTS } from "@/lib/admin/catalogParams";
 import { AdminShell } from "@/components/admin/AdminShell";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
-import { AdminPagination } from "@/components/admin/AdminListControls";
+import { AdminPagination, FILTER_BAR_CLASS, FilterActions } from "@/components/admin/AdminListControls";
 import { AdminDataList } from "@/components/admin/AdminDataList";
 import { CourseStatusBadge, enrollmentLabel } from "@/components/admin/CatalogParts";
 import { Input } from "@/components/ui/Input";
@@ -72,7 +72,7 @@ export default async function AdminCoursesPage({ searchParams }) {
           <Button href="/admin/courses/new">+ New Course</Button>
         </AdminPageHeader>
 
-        <form method="get" action="/admin/courses" role="search" className="flex flex-col gap-3">
+        <form method="get" action="/admin/courses" role="search" className={`${FILTER_BAR_CLASS} flex flex-col gap-4`}>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <div className="sm:col-span-2 lg:col-span-4">
               <Input label="Search" id="q" name="q" type="search" defaultValue={params.q} placeholder="Title, category or technology" maxLength={100} />
@@ -109,14 +109,7 @@ export default async function AdminCoursesPage({ searchParams }) {
               ))}
             </Select>
           </div>
-          <div className="flex items-center gap-3">
-            <Button type="submit">Apply</Button>
-            {hasFilters && (
-              <Link href="/admin/courses" className="text-sm font-medium text-primary hover:text-primary-hover">
-                Reset
-              </Link>
-            )}
-          </div>
+          <FilterActions resetHref="/admin/courses" showReset={Boolean(hasFilters)} />
         </form>
 
         {result.rows.length === 0 ? (

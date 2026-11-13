@@ -46,7 +46,7 @@ export default async function AdminDeliveriesPage() {
                 </>
               ) : (
                 <>
-                  <Badge variant="neutral">Not configured</Badge> No email is being sent. Set EMAIL_PROVIDER, RESEND_API_KEY and EMAIL_FROM on the server.
+                  <Badge variant="neutral">Not configured</Badge> No email is being sent. Set EMAIL_PROVIDER=smtp with SMTP_HOST, SMTP_USER and SMTP_PASS (or EMAIL_PROVIDER=resend with RESEND_API_KEY and EMAIL_FROM) on the server.
                 </>
               )}
             </p>

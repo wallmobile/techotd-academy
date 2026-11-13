@@ -8,6 +8,9 @@
  * Each item may list the `roles` allowed to see it (default: every staff role).
  * The nav is presentation only — every route and action re-checks
  * authorization server-side (src/lib/admin/context.js, src/lib/crm/context.js).
+ *
+ * `group` is the sidebar section heading an item is listed under (items are
+ * kept in display order; a heading is printed when the group changes).
  */
 import { ADMIN_MANAGEMENT_ROLES, SUPER_ADMIN_ROLES } from "@/constants/roles";
 import { CRM_ROLES } from "@/constants/crm";
@@ -17,30 +20,30 @@ import { ANALYTICS_ROLES } from "@/constants/analytics";
 
 const MANAGERS = ADMIN_MANAGEMENT_ROLES;
 export const adminNavItems = [
-  { key: "dashboard", label: "Dashboard", href: "/admin", icon: "dashboard", comingSoon: false, roles: null },
-  { key: "console", label: "Super Admin Console", href: "/super-admin", icon: "settings", comingSoon: false, roles: SUPER_ADMIN_ROLES },
-  { key: "leads", label: "Leads / CRM", href: "/admin/leads", icon: "crm", comingSoon: false, roles: CRM_ROLES },
-  { key: "users", label: "Users", href: "/admin/users", icon: "users", comingSoon: false, roles: MANAGERS },
-  { key: "students", label: "Students", href: "/admin/students", icon: "students", comingSoon: false, roles: MANAGERS },
-  { key: "enrollments", label: "Enrollments", href: "/admin/enrollments", icon: "batches", comingSoon: false, roles: MANAGERS },
-  { key: "trainers", label: "Trainers", href: "/admin/trainers", icon: "profile", comingSoon: false, roles: MANAGERS },
-  { key: "roles", label: "Roles & Access", href: "/admin/roles", icon: "roles", comingSoon: false, roles: MANAGERS },
-  { key: "courses", label: "Courses", href: "/admin/courses", icon: "courses", comingSoon: false, roles: MANAGERS },
-  { key: "batches", label: "Batches", href: "/admin/batches", icon: "batches", comingSoon: false, roles: MANAGERS },
-  { key: "fees", label: "Fees", href: "/admin/fees", icon: "payments", comingSoon: false, roles: FINANCE_ROLES },
-  { key: "certificates", label: "Certificates", href: "/admin/certificates", icon: "certificates", comingSoon: false, roles: MANAGERS },
-  { key: "analytics", label: "Analytics", href: "/admin/analytics", icon: "reports", comingSoon: false, roles: ANALYTICS_ROLES },
-  { key: "jobs", label: "Jobs & Placement", href: "/admin/jobs", icon: "placement", comingSoon: false, roles: PLACEMENT_ROLES },
-  { key: "content", label: "Content", href: "/admin/content", icon: "content", comingSoon: true, roles: MANAGERS },
-  { key: "settings", label: "Settings", href: "/admin/settings", icon: "settings", comingSoon: true, roles: MANAGERS },
-  { key: "account", label: "My Account", href: "/admin/account", icon: "profile", comingSoon: false, roles: null },
+  { key: "dashboard", label: "Dashboard", href: "/admin", icon: "dashboard", comingSoon: false, roles: null, group: "Overview" },
+  { key: "console", label: "Super Admin Console", href: "/super-admin", icon: "settings", comingSoon: false, roles: SUPER_ADMIN_ROLES, group: "Overview" },
+  { key: "analytics", label: "Analytics", href: "/admin/analytics", icon: "reports", comingSoon: false, roles: ANALYTICS_ROLES, group: "Overview" },
+  { key: "leads", label: "Leads / CRM", href: "/admin/leads", icon: "crm", comingSoon: false, roles: CRM_ROLES, group: "People" },
+  { key: "users", label: "Users", href: "/admin/users", icon: "users", comingSoon: false, roles: MANAGERS, group: "People" },
+  { key: "students", label: "Students", href: "/admin/students", icon: "students", comingSoon: false, roles: MANAGERS, group: "People" },
+  { key: "trainers", label: "Trainers", href: "/admin/trainers", icon: "trainers", comingSoon: false, roles: MANAGERS, group: "People" },
+  { key: "roles", label: "Roles & Access", href: "/admin/roles", icon: "roles", comingSoon: false, roles: MANAGERS, group: "People" },
+  { key: "courses", label: "Courses", href: "/admin/courses", icon: "courses", comingSoon: false, roles: MANAGERS, group: "Academics" },
+  { key: "batches", label: "Batches", href: "/admin/batches", icon: "batches", comingSoon: false, roles: MANAGERS, group: "Academics" },
+  { key: "enrollments", label: "Enrollments", href: "/admin/enrollments", icon: "assignments", comingSoon: false, roles: MANAGERS, group: "Academics" },
+  { key: "certificates", label: "Certificates", href: "/admin/certificates", icon: "certificates", comingSoon: false, roles: MANAGERS, group: "Academics" },
+  { key: "fees", label: "Fees", href: "/admin/fees", icon: "payments", comingSoon: false, roles: FINANCE_ROLES, group: "Finance & Careers" },
+  { key: "jobs", label: "Jobs & Placement", href: "/admin/jobs", icon: "placement", comingSoon: false, roles: PLACEMENT_ROLES, group: "Finance & Careers" },
+  { key: "content", label: "Content", href: "/admin/content", icon: "content", comingSoon: true, roles: MANAGERS, group: "Workspace" },
+  { key: "settings", label: "Settings", href: "/admin/settings", icon: "settings", comingSoon: true, roles: MANAGERS, group: "Workspace" },
+  { key: "account", label: "My Account", href: "/admin/account", icon: "profile", comingSoon: false, roles: null, group: "Workspace" },
 ];
 
 // Super Admin console nav (/super-admin). SUPER_ADMIN only — enforced by the
 // (super-admin) layout and every domain function, not by this list.
 export const superAdminNavItems = [
-  { key: "overview", label: "Overview", href: "/super-admin", icon: "dashboard", exact: true, comingSoon: false, roles: SUPER_ADMIN_ROLES },
-  { key: "staff", label: "Staff Accounts", href: "/super-admin/staff", icon: "users", comingSoon: false, roles: SUPER_ADMIN_ROLES },
-  { key: "admin", label: "Admin Panel", href: "/admin", icon: "reports", exact: true, comingSoon: false, roles: SUPER_ADMIN_ROLES },
-  { key: "account", label: "My Account", href: "/admin/account", icon: "profile", comingSoon: false, roles: SUPER_ADMIN_ROLES },
+  { key: "overview", label: "Overview", href: "/super-admin", icon: "dashboard", exact: true, comingSoon: false, roles: SUPER_ADMIN_ROLES, group: "Console" },
+  { key: "staff", label: "Staff Accounts", href: "/super-admin/staff", icon: "users", comingSoon: false, roles: SUPER_ADMIN_ROLES, group: "Console" },
+  { key: "admin", label: "Admin Panel", href: "/admin", icon: "reports", exact: true, comingSoon: false, roles: SUPER_ADMIN_ROLES, group: "Workspace" },
+  { key: "account", label: "My Account", href: "/admin/account", icon: "profile", comingSoon: false, roles: SUPER_ADMIN_ROLES, group: "Workspace" },
 ];

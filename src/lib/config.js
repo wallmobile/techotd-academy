@@ -146,11 +146,18 @@ export function inspectEnvironment(env = process.env, { builtSiteUrl } = {}) {
     if (production) warnings.push("TRUSTED_PROXY_HOPS is not set: assuming exactly one trusted reverse proxy appends X-Forwarded-For. Set 0 if the app is directly exposed, or the real number of proxies.");
   }
 
-  // --- email (all three are needed to send anything)
+  // --- email: Resend (EMAIL_PROVIDER, RESEND_API_KEY, EMAIL_FROM) or
+  // SMTP (EMAIL_PROVIDER, SMTP_HOST, SMTP_USER, SMTP_PASS; EMAIL_FROM and SMTP_PORT optional)
+  const useSmtp = env.EMAIL_PROVIDER === "smtp";
+  const emailLabel = useSmtp ? "Email (SMTP)" : "Email (Resend)";
+  const emailNames = useSmtp ? ["EMAIL_PROVIDER", "SMTP_HOST", "SMTP_USER", "SMTP_PASS"] : ["EMAIL_PROVIDER", "RESEND_API_KEY", "EMAIL_FROM"];
   group(env, vars, warnings, {
-    label: "Email (Resend)",
-    names: ["EMAIL_PROVIDER", "RESEND_API_KEY", "EMAIL_FROM"],
-    invalid: (e) => (filled(e, "EMAIL_PROVIDER") && e.EMAIL_PROVIDER !== "resend" ? ["EMAIL_PROVIDER (only 'resend' is supported)"] : []).concat(filled(e, "EMAIL_FROM") && !String(e.EMAIL_FROM).includes("@") ? ["EMAIL_FROM (no email address)"] : []),
+    label: emailLabel,
+    names: emailNames,
+    invalid: (e) =>
+      (filled(e, "EMAIL_PROVIDER") && !["resend", "smtp"].includes(e.EMAIL_PROVIDER) ? ["EMAIL_PROVIDER (must be 'resend' or 'smtp')"] : [])
+        .concat(filled(e, "EMAIL_FROM") && !String(e.EMAIL_FROM).includes("@") ? ["EMAIL_FROM (no email address)"] : [])
+        .concat(useSmtp && filled(e, "SMTP_PORT") && !/^\d{1,5}$/.test(String(e.SMTP_PORT)) ? ["SMTP_PORT (not a port number)"] : []),
     consequence: "no email is sent (in-app notifications still work) and password reset by email is unavailable",
   });
 
@@ -161,8 +168,8 @@ export function inspectEnvironment(env = process.env, { builtSiteUrl } = {}) {
       warnings.push("LEAD_ALERT_EMAIL is not a single valid email address: new-lead alert emails are not sent.");
     } else {
       mark("LEAD_ALERT_EMAIL", "present");
-      if (["EMAIL_PROVIDER", "RESEND_API_KEY", "EMAIL_FROM"].some((n) => !filled(env, n))) {
-        warnings.push("LEAD_ALERT_EMAIL is set but email (Resend) is not fully configured: new-lead alert emails are not sent.");
+      if (emailNames.some((n) => !filled(env, n))) {
+        warnings.push(`LEAD_ALERT_EMAIL is set but email (${useSmtp ? "SMTP" : "Resend"}) is not fully configured: new-lead alert emails are not sent.`);
       }
     }
   } else {

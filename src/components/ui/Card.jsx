@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 export function Card({ elevated = false, hoverable = false, className, children, ...props }) {
   return (
     <div
+      data-slot="card"
       className={cn(
         "rounded-md border border-border bg-card p-6",
         elevated ? "shadow-elevated" : "shadow-card",

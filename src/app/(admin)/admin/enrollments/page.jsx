@@ -4,7 +4,7 @@ import { getEnrollmentsPage, getBatchFilterOptions, getCourseFilterOptions } fro
 import { parseEnrollmentParams } from "@/lib/admin/enrollmentParams";
 import { AdminShell } from "@/components/admin/AdminShell";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
-import { AdminPagination } from "@/components/admin/AdminListControls";
+import { AdminPagination, FILTER_BAR_CLASS, FilterActions } from "@/components/admin/AdminListControls";
 import { AdminDataList, EnrollmentStatusBadge } from "@/components/admin/AdminDataList";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
@@ -62,7 +62,7 @@ export default async function AdminEnrollmentsPage({ searchParams }) {
           <Button href="/admin/enrollments/new">+ New Enrollment</Button>
         </AdminPageHeader>
 
-        <form method="get" action="/admin/enrollments" role="search" className="flex flex-col gap-3">
+        <form method="get" action="/admin/enrollments" role="search" className={`${FILTER_BAR_CLASS} flex flex-col gap-4`}>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <div className="sm:col-span-2 lg:col-span-4">
               <Input label="Search" id="q" name="q" type="search" defaultValue={params.q} placeholder="Student name, email or phone" maxLength={100} />
@@ -99,14 +99,7 @@ export default async function AdminEnrollmentsPage({ searchParams }) {
               ))}
             </Select>
           </div>
-          <div className="flex items-center gap-3">
-            <Button type="submit">Apply</Button>
-            {hasFilters && (
-              <Link href="/admin/enrollments" className="text-sm font-medium text-primary hover:text-primary-hover">
-                Reset
-              </Link>
-            )}
-          </div>
+          <FilterActions resetHref="/admin/enrollments" showReset={Boolean(hasFilters)} />
         </form>
 
         {result.rows.length === 0 ? (
