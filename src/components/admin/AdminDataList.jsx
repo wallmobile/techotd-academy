@@ -1,4 +1,5 @@
 import { Badge } from "@/components/ui/Badge";
+import { cn } from "@/lib/utils";
 import { ROLE_LABELS } from "@/constants/roles";
 import { LEAD_STATUS_LABELS } from "@/constants/crm";
 import { ENROLLMENT_STATUS_LABELS } from "@/constants/enrollment";
@@ -27,39 +28,47 @@ export function AdminDataList({ columns, rows, caption, rowKey = (row) => row.id
 
   return (
     <>
-      <div className="hidden overflow-hidden rounded-md border border-border bg-white shadow-card md:block">
-        <table className="w-full text-left text-sm">
-          <caption className="sr-only">{caption}</caption>
-          <thead className="border-b border-border bg-surface text-xs uppercase tracking-wide text-muted">
-            <tr>
-              {columns.map((c) => (
-                <th key={c.key} scope="col" className="px-4 py-3 font-medium">
-                  {c.label}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {rows.map((row) => (
-              <tr key={rowKey(row)}>
+      <div data-slot="card" className="hidden overflow-hidden rounded-lg border border-border bg-white shadow-card md:block">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <caption className="sr-only">{caption}</caption>
+            <thead className="border-b border-border bg-linear-to-r from-primary/[0.06] to-secondary/[0.05] text-[11px] uppercase tracking-wider text-primary/80">
+              <tr>
                 {columns.map((c) => (
-                  <td key={c.key} className="max-w-[16rem] break-words px-4 py-3 align-top text-text">
-                    {c.render(row)}
-                  </td>
+                  <th key={c.key} scope="col" className="whitespace-nowrap px-4 py-3.5 font-bold first:pl-6 last:pr-6">
+                    {c.label}
+                  </th>
                 ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-border/80">
+              {rows.map((row) => (
+                <tr key={rowKey(row)} className="transition-colors hover:bg-primary/[0.035]">
+                  {columns.map((c) => (
+                    <td
+                      key={c.key}
+                      className={cn(
+                        "max-w-[16rem] break-words px-4 py-3.5 align-middle text-text first:pl-6 last:pr-6",
+                        c === primary && "whitespace-nowrap font-semibold text-dark"
+                      )}
+                    >
+                      {c.render(row)}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <ul className="flex flex-col gap-3 md:hidden" aria-label={caption}>
         {rows.map((row) => (
-          <li key={rowKey(row)} className="rounded-md border border-border bg-white p-4 shadow-card">
-            <div className="break-words text-sm font-semibold text-dark">{primary.render(row)}</div>
-            <dl className="mt-3 flex flex-col gap-1.5 text-xs">
+          <li key={rowKey(row)} data-slot="card" className="overflow-hidden rounded-lg border border-border bg-white shadow-card">
+            <div className="break-words border-b border-border bg-linear-to-r from-primary/[0.06] to-secondary/[0.05] px-4 py-3 text-sm font-semibold text-dark">{primary.render(row)}</div>
+            <dl className="flex flex-col gap-2 px-4 py-3 text-xs">
               {rest.map((c) => (
-                <div key={c.key} className="flex justify-between gap-3">
+                <div key={c.key} className="flex items-center justify-between gap-3">
                   <dt className="flex-none text-muted">{c.label}</dt>
                   <dd className="min-w-0 break-words text-right font-medium text-text">{c.render(row)}</dd>
                 </div>

@@ -12,6 +12,8 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { LEAD_SOURCE_LABELS, LEAD_STATUSES, LEAD_STATUS_LABELS } from "@/constants/crm";
 import { formatDbDate } from "@/lib/utils";
 
+const STATUS_TONES = { NEW: "primary", CONTACTED: "sky", QUALIFIED: "secondary", FOLLOW_UP: "warning", CONVERTED: "success", LOST: "danger" };
+
 export const metadata = {
   title: "Leads / CRM",
   robots: { index: false, follow: false },
@@ -58,7 +60,7 @@ export default async function AdminLeadsPage({ searchParams }) {
         />
 
         <AdminStatsGrid
-          stats={LEAD_STATUSES.map((s) => ({ label: LEAD_STATUS_LABELS[s], value: summary.byStatus[s] }))}
+          stats={LEAD_STATUSES.map((s) => ({ label: LEAD_STATUS_LABELS[s], value: summary.byStatus[s], tone: STATUS_TONES[s] }))}
         />
 
         <LeadFilters params={params} options={options} />

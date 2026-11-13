@@ -1,7 +1,6 @@
-import Link from "next/link";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
-import { Button } from "@/components/ui/Button";
+import { FILTER_BAR_CLASS, FilterActions } from "@/components/admin/AdminListControls";
 import { LEAD_STATUSES, LEAD_STATUS_LABELS, LEAD_SOURCES, LEAD_SOURCE_LABELS } from "@/constants/crm";
 
 const SORT_LABELS = { newest: "Newest first", oldest: "Oldest first", name: "Name (A–Z)" };
@@ -15,7 +14,7 @@ const SORT_LABELS = { newest: "Newest first", oldest: "Oldest first", name: "Nam
 export function LeadFilters({ params, options }) {
   const active = params.q || params.status || params.source || params.course || params.mode || params.assigned || params.sort !== "newest";
   return (
-    <form method="get" action="/admin/leads" role="search" className="flex flex-col gap-3">
+    <form method="get" action="/admin/leads" role="search" className={FILTER_BAR_CLASS}>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div className="sm:col-span-2">
           <Input label="Search" id="q" name="q" type="search" defaultValue={params.q} placeholder="Name, email or phone" maxLength={100} />
@@ -73,14 +72,9 @@ export function LeadFilters({ params, options }) {
             </option>
           ))}
         </Select>
-      </div>
-      <div className="flex items-center gap-3">
-        <Button type="submit">Apply</Button>
-        {active && (
-          <Link href="/admin/leads" className="text-sm font-medium text-primary hover:text-primary-hover">
-            Reset
-          </Link>
-        )}
+        <div className="flex items-end">
+          <FilterActions resetHref="/admin/leads" showReset={Boolean(active)} />
+        </div>
       </div>
     </form>
   );

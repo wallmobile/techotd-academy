@@ -4,7 +4,7 @@ import { getBatchesPage, getBatchFormOptions } from "@/lib/admin/batches";
 import { parseBatchParams, BATCH_SORTS } from "@/lib/admin/catalogParams";
 import { AdminShell } from "@/components/admin/AdminShell";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
-import { AdminPagination } from "@/components/admin/AdminListControls";
+import { AdminPagination, FILTER_BAR_CLASS, FilterActions } from "@/components/admin/AdminListControls";
 import { AdminDataList } from "@/components/admin/AdminDataList";
 import { BatchStatusBadge } from "@/components/admin/CatalogParts";
 import { Input } from "@/components/ui/Input";
@@ -62,7 +62,7 @@ export default async function AdminBatchesPage({ searchParams }) {
           <Button href="/admin/batches/new">+ New Batch</Button>
         </AdminPageHeader>
 
-        <form method="get" action="/admin/batches" role="search" className="flex flex-col gap-3">
+        <form method="get" action="/admin/batches" role="search" className={`${FILTER_BAR_CLASS} flex flex-col gap-4`}>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <div className="sm:col-span-2 lg:col-span-4">
               <Input label="Search" id="q" name="q" type="search" defaultValue={params.q} placeholder="Course, batch id, schedule or location" maxLength={100} />
@@ -99,14 +99,7 @@ export default async function AdminBatchesPage({ searchParams }) {
               ))}
             </Select>
           </div>
-          <div className="flex items-center gap-3">
-            <Button type="submit">Apply</Button>
-            {hasFilters && (
-              <Link href="/admin/batches" className="text-sm font-medium text-primary hover:text-primary-hover">
-                Reset
-              </Link>
-            )}
-          </div>
+          <FilterActions resetHref="/admin/batches" showReset={Boolean(hasFilters)} />
         </form>
 
         {result.rows.length === 0 ? (

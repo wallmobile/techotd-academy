@@ -3,12 +3,16 @@ import { requireSuperAdminContext } from "@/lib/superAdmin/context";
 import { getSuperAdminOverview } from "@/lib/superAdmin/staff";
 import { superAdminNavItems } from "@/constants/adminNav";
 import { AdminShell } from "@/components/admin/AdminShell";
-import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
-import { AdminStatsGrid } from "@/components/admin/AdminStatsGrid";
 import { RoleBadge, StatusBadge } from "@/components/admin/AdminDataList";
-import { Card } from "@/components/ui/Card";
-import { Badge } from "@/components/ui/Badge";
-import { Button } from "@/components/ui/Button";
+import {
+  Avatar,
+  DashboardHero,
+  Distribution,
+  HealthList,
+  Panel,
+  ROLE_TONES,
+  ShortcutGrid,
+} from "@/components/admin/DashboardParts";
 import { ROLE_LABELS } from "@/constants/roles";
 import { formatDbDate } from "@/lib/utils";
 
@@ -17,93 +21,86 @@ export const metadata = {
   robots: { index: false, follow: false },
 };
 
+const SHORTCUTS = [
+  { key: "staff", label: "Staff accounts", href: "/super-admin/staff", icon: "users" },
+  { key: "new-staff", label: "Create staff", href: "/super-admin/staff/new", icon: "profile" },
+  { key: "roles", label: "Roles & access", href: "/admin/roles", icon: "roles" },
+  { key: "admin", label: "Admin panel", href: "/admin", icon: "dashboard" },
+];
+
 export default async function SuperAdminOverviewPage() {
   const { user } = await requireSuperAdminContext();
   const data = await getSuperAdminOverview();
   const { stats, statusCounts, system, staffByRole, recentStaff, adminAccounts } = data;
-  const maxRole = Math.max(1, ...staffByRole.map((r) => r.count));
   const notActive = (statusCounts.INACTIVE || 0) + (statusCounts.SUSPENDED || 0);
 
   return (
     <AdminShell user={user} title="Overview" navItems={superAdminNavItems} brand="TechOTD Super Admin">
       <div className="flex flex-col gap-6">
-        <AdminPageHeader title="Super Admin Console" description="Platform-level control: staff accounts and access.">
-          <Button href="/super-admin/staff/new">Create staff account</Button>
-        </AdminPageHeader>
-
-        <AdminStatsGrid
-          stats={[
-            { label: "Total users", value: stats.totalUsers },
-            { label: "Staff accounts", value: stats.staff, hint: "All non-student, non-trainer roles" },
-            { label: "Admin accounts", value: adminAccounts, hint: "Admin + Super Admin" },
-            { label: "Signed-in users", value: stats.usersWithActiveSession, hint: "With an unexpired session" },
-            { label: "Inactive / suspended", value: notActive },
+        <DashboardHero
+          name={user.name}
+          title="Super Admin Console"
+          description="Platform-level control: staff accounts and access."
+          actions={[
+            { label: "Create staff account", href: "/super-admin/staff/new", icon: "users" },
+            { label: "Open admin panel", href: "/admin", icon: "dashboard" },
+          ]}
+          glance={[
+            { label: "Staff accounts", value: stats.staff, icon: "roles", progress: stats.totalUsers ? stats.staff / stats.totalUsers : 0 },
+            { label: "Total users", value: stats.totalUsers, icon: "users" },
+            { label: "Signed in now", value: stats.usersWithActiveSession, icon: "profile", progress: stats.totalUsers ? stats.usersWithActiveSession / stats.totalUsers : 0 },
+            { label: "Inactive / suspended", value: notActive, icon: "attendance", progress: stats.totalUsers ? notActive / stats.totalUsers : 0 },
           ]}
         />
 
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          <Card>
-            <h2 className="text-sm font-semibold text-dark">Staff by role</h2>
-            <ul className="mt-4 flex flex-col gap-3">
-              {staffByRole.map(({ role, count }) => (
-                <li key={role} className="text-sm">
-                  <div className="flex justify-between gap-3">
-                    <span className="text-text">{ROLE_LABELS[role]}</span>
-                    <span className="font-medium text-dark">{count}</span>
-                  </div>
-                  <div aria-hidden="true" className="mt-1 h-1.5 rounded-full bg-surface">
-                    <div className="h-1.5 rounded-full bg-primary" style={{ width: `${(count / maxRole) * 100}%` }} />
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </Card>
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+          <Panel title="Staff by role" subtitle={`${stats.staff} staff account${stats.staff === 1 ? "" : "s"} · ${adminAccounts} with admin access`}>
+            <Distribution
+              items={staffByRole.map(({ role, count }) => ({ key: role, label: ROLE_LABELS[role], value: count, tone: ROLE_TONES[role] }))}
+              emptyText="No staff accounts yet."
+            />
+          </Panel>
 
-          <div className="flex flex-col gap-6">
-            <Card>
-              <div className="flex items-center justify-between gap-3">
-                <h2 className="text-sm font-semibold text-dark">Recent staff accounts</h2>
-                <Link href="/super-admin/staff" className="text-xs font-medium text-primary hover:text-primary-hover">
-                  View all
-                </Link>
-              </div>
-              {recentStaff.length === 0 ? (
-                <p className="mt-3 text-sm text-muted">No staff accounts yet.</p>
-              ) : (
-                <ul className="mt-3 divide-y divide-border">
-                  {recentStaff.map((u) => (
-                    <li key={u.id} className="flex items-center justify-between gap-3 py-2.5">
-                      <div className="min-w-0">
-                        <Link href={`/admin/users/${u.id}`} className="block truncate text-sm font-medium text-dark hover:text-primary">
-                          {u.name}
-                        </Link>
-                        <p className="truncate text-xs text-muted">{u.email}</p>
-                      </div>
-                      <div className="flex flex-none flex-col items-end gap-1">
-                        <RoleBadge role={u.role} />
-                        <StatusBadge status={u.status} />
-                        <span className="text-xs text-muted">{formatDbDate(u.createdAt)}</span>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </Card>
+          <Panel title="Recent staff accounts" href="/super-admin/staff" className="lg:col-span-2">
+            {recentStaff.length === 0 ? (
+              <p className="text-sm text-muted">No staff accounts yet.</p>
+            ) : (
+              <ul className="-my-2.5 divide-y divide-border">
+                {recentStaff.map((u) => (
+                  <li key={u.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 py-3">
+                    <Avatar name={u.name} toneName={ROLE_TONES[u.role]} />
+                    <div className="min-w-0 flex-1">
+                      <Link href={`/admin/users/${u.id}`} className="block truncate text-sm font-medium text-dark hover:text-primary">
+                        {u.name}
+                      </Link>
+                      <p className="truncate text-xs text-muted">{u.email}</p>
+                    </div>
+                    <div className="flex flex-none items-center gap-2 max-sm:w-full max-sm:pl-12">
+                      <RoleBadge role={u.role} />
+                      <StatusBadge status={u.status} />
+                      <span className="w-24 text-right text-xs text-muted max-sm:ml-auto">{formatDbDate(u.createdAt)}</span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Panel>
+        </div>
 
-            <Card>
-              <h2 className="text-sm font-semibold text-dark">System status</h2>
-              <dl className="mt-3 flex flex-col gap-2 text-sm">
-                <div className="flex items-center justify-between gap-3">
-                  <dt className="text-muted">Database</dt>
-                  <dd>
-                    <Badge variant={system.databaseOk ? "success" : "danger"}>
-                      {system.databaseOk ? "Connected" : "Unavailable"}
-                    </Badge>
-                  </dd>
-                </div>
-              </dl>
-            </Card>
-          </div>
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+          <Panel title="Shortcuts" className="lg:col-span-2">
+            <ShortcutGrid items={SHORTCUTS} />
+          </Panel>
+
+          <Panel title="System status">
+            <HealthList
+              rows={[
+                { label: "Database", value: system.databaseOk ? "Connected" : "Unavailable", tone: system.databaseOk ? "success" : "danger" },
+                { label: "Signed-in users", value: stats.usersWithActiveSession, tone: "primary" },
+                { label: "Inactive / suspended accounts", value: notActive, tone: notActive > 0 ? "warning" : "success" },
+              ]}
+            />
+          </Panel>
         </div>
       </div>
     </AdminShell>

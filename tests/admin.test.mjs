@@ -9,7 +9,7 @@ import { getCurrentUser } from "@/lib/auth/currentUser";
 import { getUsersPage, getUserDetail, setUserStatus } from "@/lib/admin/users";
 import { getStudentsPage, getStudentDetailForAdmin } from "@/lib/admin/students";
 import { getTrainersPage, getTrainerDetailForAdmin, assignTrainerToBatch } from "@/lib/admin/trainers";
-import { getAdminDashboardData } from "@/lib/admin/dashboard";
+import { getAdminDashboardData, getAdminDashboardInsights } from "@/lib/admin/dashboard";
 import { parseListParams } from "@/lib/admin/listParams";
 import { createTrainerAction, assignTrainerBatchAction, setUserStatusAction } from "@/lib/admin/actions";
 import { verifyPassword } from "@/lib/auth/password";
@@ -80,6 +80,7 @@ test("domain reads return nothing for non-admins", async () => {
     assert.equal(await getUserDetail(stu.id), null);
     assert.equal(await getStudentDetailForAdmin(stu.id), null);
     assert.equal(await getAdminDashboardData(), null);
+    assert.equal(await getAdminDashboardInsights(), null);
   }
 });
 
@@ -174,6 +175,19 @@ test("dashboard figures come from real rows", async () => {
   assert.equal(after.roleDistribution.reduce((s, r) => s + r.count, 0), await userCount());
   assert.equal(after.system.databaseOk, true);
   assert.ok(after.recentUsers.length <= 5);
+});
+
+test("dashboard insights: 30-day series line up with the days and count new registrations", async () => {
+  await signIn(await makeUser("ADMIN", "insight"));
+  const before = await getAdminDashboardInsights();
+  assert.equal(before.days.length, 30);
+  for (const key of ["registrations", "leads", "enrollments", "finance"]) assert.equal(before[key].series.length, 30, key);
+  await makeUser("STUDENT", "insightstu");
+  const after = await getAdminDashboardInsights();
+  assert.equal(after.registrations.total, before.registrations.total + 1);
+  assert.equal(after.registrations.series.reduce((x, y) => x + y, 0), after.registrations.total);
+  assert.ok(after.upcomingBatches.length <= 4);
+  assert.ok(after.upcomingBatches.every((x) => ["Open", "Upcoming"].includes(x.status)));
 });
 
 // -------------------------------------------------------------- trainer creation
