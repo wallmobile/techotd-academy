@@ -1,30 +1,62 @@
 import "./globals.css";
 import { MotionProvider } from "@/components/shared/MotionProvider";
-import { shareImages } from "@/constants/seo";
+import { SITE_LOCALE, SITE_NAME, shareImages } from "@/constants/seo";
+import { getSiteUrl } from "@/lib/seo";
 
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://academy.techotd.in";
+const siteUrl = getSiteUrl();
+
+const defaultTitle = "TechOTD Academy — Learn. Build. Grow.";
+// Fallback for any page that does not set its own description.
+const defaultDescription =
+  "IT training institute in Noida by TechOTD Pvt. Ltd. — professional courses, live online, classroom and hybrid classes, hands-on projects and career support.";
+
+// Search Console / Bing Webmaster ownership tags. Optional: set GOOGLE_SITE_VERIFICATION
+// and/or BING_SITE_VERIFICATION (the token only, not the whole tag) and the matching
+// <meta> is added; leave them unset and nothing is rendered.
+const verification = {
+  ...(process.env.GOOGLE_SITE_VERIFICATION ? { google: process.env.GOOGLE_SITE_VERIFICATION } : {}),
+  ...(process.env.BING_SITE_VERIFICATION ? { other: { "msvalidate.01": process.env.BING_SITE_VERIFICATION } } : {}),
+};
 
 export const metadata = {
   metadataBase: new URL(siteUrl),
+  applicationName: SITE_NAME,
   title: {
-    default: "TechOTD Academy — Learn. Build. Grow.",
+    default: defaultTitle,
     template: "%s | TechOTD Academy",
   },
-  description:
-    "TechOTD Academy is the training and education division of TechOTD Pvt. Ltd., offering professional IT courses, live and hybrid classes, and career support.",
+  description: defaultDescription,
+  // A page that sets its own `openGraph`/`twitter` replaces these entirely
+  // (see pageMetadata() in src/lib/seo.js, which repeats every field).
   openGraph: {
     type: "website",
-    siteName: "TechOTD Academy",
-    title: "TechOTD Academy — Learn. Build. Grow.",
+    siteName: SITE_NAME,
+    locale: SITE_LOCALE,
+    title: defaultTitle,
     description:
-      "Professional IT training, live online and hybrid classes, practical projects, and placement support.",
-    url: siteUrl,
+      "Professional IT training, live online and hybrid classes, practical projects, and career support.",
+    images: shareImages,
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: defaultTitle,
+    description:
+      "Professional IT training, live online and hybrid classes, practical projects, and career support.",
     images: shareImages,
   },
   robots: {
     index: true,
     follow: true,
+    // Let search engines show full-size image previews and complete snippets.
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+      "max-video-preview": -1,
+    },
   },
+  ...(Object.keys(verification).length ? { verification } : {}),
 };
 
 export default function RootLayout({ children }) {

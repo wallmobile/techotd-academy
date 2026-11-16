@@ -7,7 +7,8 @@ import { TrainingSupport } from "@/components/training/TrainingSupport";
 import { RelatedTrainingCourses } from "@/components/training/RelatedTrainingCourses";
 import { TrainingFAQ } from "@/components/training/TrainingFAQ";
 import { TrainingCTA } from "@/components/training/TrainingCTA";
-import { shareImages } from "@/constants/seo";
+import { JsonLd } from "@/components/seo/JsonLd";
+import { breadcrumbSchema, faqSchema, pageMetadata, trainingMetaDescription, webPageSchema } from "@/lib/seo";
 
 export function generateStaticParams() {
   return trainingModes.map((mode) => ({ mode: mode.slug }));
@@ -23,19 +24,11 @@ export async function generateMetadata({ params }) {
 
   // The root layout's title template appends " | TechOTD Academy" —
   // keep this plain so it doesn't get duplicated.
-  const title = `${trainingMode.title}`;
-
-  return {
-    title,
-    description: trainingMode.shortDescription,
-    alternates: { canonical: `/training/${trainingMode.slug}` },
-    openGraph: {
-      title,
-      description: trainingMode.shortDescription,
-      url: `/training/${trainingMode.slug}`,
-      images: shareImages,
-    },
-  };
+  return pageMetadata({
+    title: trainingMode.title,
+    description: trainingMetaDescription(trainingMode),
+    path: `/training/${trainingMode.slug}`,
+  });
 }
 
 export default async function TrainingModePage({ params }) {
@@ -46,8 +39,21 @@ export default async function TrainingModePage({ params }) {
     notFound();
   }
 
+  const path = `/training/${trainingMode.slug}`;
+
   return (
     <>
+      <JsonLd
+        data={[
+          webPageSchema({ name: trainingMode.title, description: trainingMetaDescription(trainingMode), path }),
+          // The visible trail is Home / Training / <mode>, but "Training" has no page of its own.
+          breadcrumbSchema([
+            { name: "Home", path: "/" },
+            { name: trainingMode.title, path },
+          ]),
+          faqSchema(trainingMode.faqs),
+        ]}
+      />
       <TrainingHero trainingMode={trainingMode} />
       <TrainingJourney trainingMode={trainingMode} />
       <TrainingWhy trainingMode={trainingMode} />

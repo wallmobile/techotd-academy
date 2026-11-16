@@ -12,13 +12,15 @@ import { trainingModes } from "@/data/trainingModes";
 import { FaqAccordion } from "@/components/shared/FaqAccordion";
 import { techInfo } from "@/data/techInfo";
 import { staggerContainer } from "@/lib/motion";
+import { JsonLd } from "@/components/seo/JsonLd";
+import { breadcrumbSchema, faqSchema, pageMetadata, webPageSchema } from "@/lib/seo";
 
-export const metadata = {
-  title: "About TechOTD Academy",
-  description:
-    "TechOTD Academy is a career-focused training institute in Noida offering practical, industry-ready programs guided by expert mentors.",
-  alternates: { canonical: "/about" },
-};
+// The layout's title template already appends " | TechOTD Academy".
+const TITLE = "About Us — IT Training Institute in Noida";
+const DESCRIPTION =
+  "TechOTD Academy is a career-focused training institute in Noida offering practical, industry-ready programs guided by expert mentors.";
+
+export const metadata = pageMetadata({ title: TITLE, description: DESCRIPTION, path: "/about" });
 
 const pillars = [
   { word: "Learn", text: "Structured, mentor-led programs that explain the why, not just the how." },
@@ -117,6 +119,16 @@ export default async function AboutPage() {
 
   return (
     <>
+      <JsonLd
+        data={[
+          webPageSchema({ type: "AboutPage", name: TITLE, description: DESCRIPTION, path: "/about", aboutOrganization: true }),
+          breadcrumbSchema([
+            { name: "Home", path: "/" },
+            { name: "About", path: "/about" },
+          ]),
+          faqSchema(faqs),
+        ]}
+      />
       <PageHero
         crumbs={[{ label: "Home", href: "/" }, { label: "About" }]}
         eyebrow="About TechOTD Academy"

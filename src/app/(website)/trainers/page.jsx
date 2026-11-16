@@ -9,13 +9,14 @@ import { Gradient } from "@/components/training/icons";
 import { trainers } from "@/data/trainers";
 import { getCourse } from "@/lib/catalog";
 import { staggerContainer } from "@/lib/motion";
+import { JsonLd } from "@/components/seo/JsonLd";
+import { breadcrumbSchema, faqSchema, pageMetadata, webPageSchema } from "@/lib/seo";
 
-export const metadata = {
-  title: "Our Trainers & Mentors",
-  description:
-    "Meet the mentors behind TechOTD Academy's courses — practical, project-focused guidance across full stack, data, AI, cloud and more.",
-  alternates: { canonical: "/trainers" },
-};
+const TITLE = "Our Trainers & Mentors";
+const DESCRIPTION =
+  "Meet the mentors behind TechOTD Academy's courses in Noida — practical, project-focused guidance across full stack, data, AI, cloud and more.";
+
+export const metadata = pageMetadata({ title: TITLE, description: DESCRIPTION, path: "/trainers" });
 
 const principles = [
   {
@@ -120,6 +121,17 @@ export default async function TrainersPage() {
 
   return (
     <>
+      {/* No Person markup for the mentors: the profiles on this page are placeholders. */}
+      <JsonLd
+        data={[
+          webPageSchema({ name: TITLE, description: DESCRIPTION, path: "/trainers" }),
+          breadcrumbSchema([
+            { name: "Home", path: "/" },
+            { name: "Trainers", path: "/trainers" },
+          ]),
+          faqSchema(faqs),
+        ]}
+      />
       <PageHero
         crumbs={[{ label: "Home", href: "/" }, { label: "Trainers" }]}
         eyebrow="Mentors & trainers"

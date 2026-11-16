@@ -15,7 +15,16 @@ import { CareerSupport } from "@/components/courses/CareerSupport";
 import { CourseFAQ } from "@/components/courses/CourseFAQ";
 import { RelatedCourses } from "@/components/courses/RelatedCourses";
 import { CourseCTA } from "@/components/courses/CourseCTA";
-import { shareImages } from "@/constants/seo";
+import { JsonLd } from "@/components/seo/JsonLd";
+import {
+  breadcrumbSchema,
+  courseMetaDescription,
+  courseSchema,
+  courseSeoTitle,
+  faqSchema,
+  pageMetadata,
+  webPageSchema,
+} from "@/lib/seo";
 
 const SUBNAV_ITEMS = [
   { id: "overview", label: "Overview" },
@@ -28,10 +37,6 @@ const SUBNAV_ITEMS = [
   { id: "faq", label: "FAQ" },
 ];
 
-// Inside a <script> tag, a literal "<" could close the tag; JSON allows the
-// escaped form, so structured data is emitted with every "<" escaped.
-const JSON_LD_LT = String.fromCharCode(92) + "u003c";
-
 export async function generateMetadata({ params }) {
   const { "course-slug": slug } = await params;
   // Unpublished courses are not exposed on public routes.
@@ -43,19 +48,11 @@ export async function generateMetadata({ params }) {
 
   // The root layout's title template appends " | TechOTD Academy" —
   // keep this plain so it doesn't get duplicated.
-  const title = `${course.title} Course`;
-
-  return {
-    title,
-    description: course.shortDescription,
-    alternates: { canonical: `/courses/${course.slug}` },
-    openGraph: {
-      title,
-      description: course.shortDescription,
-      url: `/courses/${course.slug}`,
-      images: shareImages,
-    },
-  };
+  return pageMetadata({
+    title: courseSeoTitle(course),
+    description: courseMetaDescription(course),
+    path: `/courses/${course.slug}`,
+  });
 }
 
 export default async function CourseDetailPage({ params }) {
@@ -68,23 +65,21 @@ export default async function CourseDetailPage({ params }) {
 
   const related = await getRelatedCourses(course);
 
-  const structuredData = {
-    "@context": "https://schema.org",
-    "@type": "Course",
-    name: course.title,
-    description: course.shortDescription,
-    provider: {
-      "@type": "Organization",
-      name: "TechOTD Academy",
-      sameAs: process.env.NEXT_PUBLIC_SITE_URL || "https://academy.techotd.in",
-    },
-  };
+  const path = `/courses/${course.slug}`;
 
   return (
     <>
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData).replace(/</g, JSON_LD_LT) }}
+      <JsonLd
+        data={[
+          webPageSchema({ name: courseSeoTitle(course), description: courseMetaDescription(course), path }),
+          breadcrumbSchema([
+            { name: "Home", path: "/" },
+            { name: "Courses", path: "/courses" },
+            { name: course.title, path },
+          ]),
+          courseSchema(course),
+          faqSchema(course.faqs),
+        ]}
       />
       <CourseDetailHero course={course} />
       <CourseSubNav items={SUBNAV_ITEMS} ctaHref={`/book-demo?course=${course.slug}&source=course-detail`} />
