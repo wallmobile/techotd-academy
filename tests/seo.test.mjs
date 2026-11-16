@@ -212,6 +212,40 @@ test("sitemap: every published course, training mode and public page, with absol
   assert.ok(entries.every((e) => e.lastModified === undefined), "untouched content has no invented lastmod");
 });
 
+test("/llms.txt: with the database unreachable it still answers at once from the code-defined catalog, cached only briefly", async () => {
+  // Lighthouse's Agentic Browsing audit waits ~2 s for /llms.txt; a cold serverless instance with a
+  // slow or failing database must not turn that into a failed audit. A separate process gets a
+  // DATABASE_URL pointing at a closed port, so the real route handler runs against a dead database.
+  const { spawnSync } = await import("node:child_process");
+  const path = await import("node:path");
+  const { pathToFileURL } = await import("node:url");
+  const loader = pathToFileURL(path.join(process.cwd(), "scripts", "alias-loader.mjs")).href;
+  const script = `
+    import { register } from "node:module";
+    register(${JSON.stringify(loader)});
+    const started = Date.now();
+    const { GET } = await import("@/app/llms.txt/route");
+    const res = await GET();
+    const body = await res.text();
+    console.log(JSON.stringify({ status: res.status, cache: res.headers.get("cache-control"), ms: Date.now() - started, body }));
+    process.exit(0);
+  `;
+  const run = spawnSync(process.execPath, ["--input-type=module", "-e", script], {
+    env: { ...process.env, DATABASE_URL: "postgres://postgres@127.0.0.1:1/unreachable" },
+    encoding: "utf8",
+    timeout: 20_000,
+  });
+  assert.equal(run.status, 0, run.stderr);
+  const out = JSON.parse(run.stdout.trim().split("\n").pop());
+
+  assert.equal(out.status, 200);
+  assert.ok(out.ms < 2000, `answered in ${out.ms} ms (must beat the 2 s crawler/Lighthouse limit)`);
+  assert.match(out.cache, /s-maxage=60\b/, "the degraded copy is cached for a minute only");
+  assert.ok(!/stale-while-revalidate/.test(out.cache));
+  for (const course of courses) assert.ok(out.body.includes(absoluteUrl(`/courses/${course.slug}`)), course.slug);
+  assert.ok(out.body.startsWith("# TechOTD Academy\n"));
+});
+
 // robots.txt matching as crawlers do it: a rule is a PREFIX of the URL path; "$" anchors the end.
 function blockedByRobots(path, disallow) {
   return disallow.some((rule) => (rule.endsWith("$") ? path === rule.slice(0, -1) : path.startsWith(rule)));
@@ -236,6 +270,9 @@ test("/llms.txt: plain-text site summary for AI assistants, generated from the r
   const res = await llmsTxt();
   assert.equal(res.status, 200);
   assert.match(res.headers.get("content-type"), /^text\/plain/);
+  // CDN-cacheable (s-maxage) and refreshed in the background, so crawlers get it in milliseconds
+  assert.match(res.headers.get("cache-control"), /s-maxage=\d+/);
+  assert.match(res.headers.get("cache-control"), /stale-while-revalidate=\d+/);
   const body = await res.text();
 
   assert.ok(body.startsWith("# TechOTD Academy\n"));

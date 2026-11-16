@@ -1,4 +1,5 @@
 import { listCourses } from "@/lib/catalog";
+import { courses as codeDefinedCourses } from "@/data/courses";
 import { contact } from "@/constants/contact";
 import { SITE_DESCRIPTION, SITE_NAME } from "@/constants/seo";
 import { faqs } from "@/data/faqs";
@@ -10,10 +11,33 @@ import { absoluteUrl, joinModes } from "@/lib/seo";
 // render, so it never drifts, and the catalog is admin-editable, so it is built per request.
 export const dynamic = "force-dynamic";
 
+// Lighthouse's "Agentic Browsing" audit (and some AI crawlers) give up on /llms.txt after
+// about 2 seconds. On a cold serverless instance the first database call alone can take
+// longer, so the database gets a budget; past it the file is answered from the code-defined
+// course list instead of failing, and that answer is cached only briefly.
+const DB_BUDGET_MS = 1200;
+
+// Public (CDN) caching: serve the cached copy instantly and refresh it in the background.
+const CACHE_FRESH = "public, max-age=300, s-maxage=3600, stale-while-revalidate=86400";
+const CACHE_FALLBACK = "public, max-age=0, s-maxage=60";
+
 const oneLine = (text) => String(text ?? "").replace(/\s+/g, " ").trim();
 
+async function loadCourses() {
+  let timer;
+  const budget = new Promise((resolve) => {
+    timer = setTimeout(() => resolve(null), DB_BUDGET_MS);
+  });
+  try {
+    const fromDatabase = await Promise.race([listCourses({ publishedOnly: true }).catch(() => null), budget]);
+    return fromDatabase ? { courses: fromDatabase, complete: true } : { courses: codeDefinedCourses, complete: false };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function GET() {
-  const courses = await listCourses({ publishedOnly: true });
+  const { courses, complete } = await loadCourses();
 
   const lines = [
     `# ${SITE_NAME}`,
@@ -53,7 +77,7 @@ export async function GET() {
   return new Response(lines.join("\n"), {
     headers: {
       "Content-Type": "text/plain; charset=utf-8",
-      "Cache-Control": "public, max-age=3600",
+      "Cache-Control": complete ? CACHE_FRESH : CACHE_FALLBACK,
     },
   });
 }
