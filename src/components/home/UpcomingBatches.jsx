@@ -110,19 +110,21 @@ export async function UpcomingBatches() {
                     {batch.course.title}
                   </h3>
 
-                  <dl className="mt-5 flex flex-1 flex-col gap-3">
+                  {/* Plain divs, not <dl>/<dt>/<dd>: an icon <span> next to the dt/dd pair is not valid
+                      inside a <dl> (axe "definition-list"/"dlitem"). The classes - and so the look - are unchanged. */}
+                  <div className="mt-5 flex flex-1 flex-col gap-3">
                     {details.map((item) => (
                       <div key={item.label} className="flex items-center gap-3">
                         <span className={cn("flex h-8 w-8 flex-none items-center justify-center rounded-lg", accent.icon)}>
                           {item.icon}
                         </span>
                         <div className="min-w-0">
-                          <dt className="text-xs text-muted">{item.label}</dt>
-                          <dd className="text-sm font-medium text-dark">{item.value}</dd>
+                          <div className="text-xs text-muted">{item.label}</div>
+                          <div className="text-sm font-medium text-dark">{item.value}</div>
                         </div>
                       </div>
                     ))}
-                  </dl>
+                  </div>
 
                   <div className="mt-6 flex flex-col gap-3 border-t border-border pt-5">
                     <Button

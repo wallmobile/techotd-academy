@@ -80,7 +80,10 @@ function Shell({ href, className, style, children }) {
   );
 }
 
-export function CourseCard({ course, delay = 0, spotlight = false }) {
+// headingLevel: 3 where the card sits under a section <h2> (related courses); the
+// course list page passes 2 because its cards follow the page <h1> directly (axe "heading-order").
+export function CourseCard({ course, delay = 0, spotlight = false, headingLevel = 3 }) {
+  const Heading = `h${headingLevel}`;
   const href = `/courses/${course.slug}`;
   const tags = course.technologies.slice(0, spotlight ? 6 : MAX_TAGS);
   const extra = course.technologies.length - tags.length;
@@ -118,9 +121,9 @@ export function CourseCard({ course, delay = 0, spotlight = false }) {
           <p className="relative mt-6 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/75">
             {course.category}
           </p>
-          <h3 className="relative mt-2 max-w-xl text-3xl font-semibold leading-tight tracking-tight sm:text-4xl">
+          <Heading className="relative mt-2 max-w-xl text-3xl font-semibold leading-tight tracking-tight sm:text-4xl">
             {course.title}
-          </h3>
+          </Heading>
           <p className="relative mt-3 max-w-lg text-base text-white/85">{course.description}</p>
 
           <div className="relative mt-5 flex flex-wrap gap-1.5">
@@ -175,9 +178,9 @@ export function CourseCard({ course, delay = 0, spotlight = false }) {
           <p className="relative mt-5 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
             {course.category}
           </p>
-          <h3 className="relative mt-2 text-xl font-semibold leading-tight tracking-tight text-dark transition-colors group-hover:text-primary">
+          <Heading className="relative mt-2 text-xl font-semibold leading-tight tracking-tight text-dark transition-colors group-hover:text-primary">
             {course.title}
-          </h3>
+          </Heading>
           <p className="relative mt-2 text-sm leading-relaxed text-muted">{course.shortDescription}</p>
 
           <div className="relative mt-4 flex flex-wrap gap-1.5">

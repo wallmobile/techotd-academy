@@ -106,7 +106,9 @@ export function TechGlossary({ terms }) {
                         key={course.slug}
                         href={`/courses/${course.slug}`}
                         title={course.title}
-                        aria-label={`Used in ${course.title}`}
+                        // The visible text is the course's initials, so the accessible name must contain them
+                        // (axe "label-content-name-mismatch"), then say what they stand for.
+                        aria-label={`${course.initials}: used in ${course.title}`}
                         className="rounded-full bg-surface px-2 py-0.5 text-[11px] font-semibold text-text transition-colors hover:bg-primary hover:text-white"
                       >
                         {course.initials}

@@ -92,6 +92,9 @@ export function HeroScene() {
           width={1407}
           height={1118}
           priority
+          // This is the LCP element on desktop: Next 16's `priority` only adds the <link rel=preload>,
+          // so ask for high fetch priority explicitly (Lighthouse "lcp-discovery").
+          fetchPriority="high"
           sizes="(min-width: 1024px) 44vw, 92vw"
           className="absolute bottom-0 right-[-2%] h-auto w-[112%] max-w-none"
         />

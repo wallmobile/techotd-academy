@@ -8,6 +8,7 @@ import { faqs } from "@/data/faqs";
 import { contact } from "@/constants/contact";
 import { listCourses } from "@/lib/catalog";
 import sitemap from "@/app/sitemap";
+import robots from "@/app/robots";
 import { GET as llmsTxt } from "@/app/llms.txt/route";
 import {
   META_DESCRIPTION_MAX,
@@ -209,6 +210,26 @@ test("sitemap: every published course, training mode and public page, with absol
     assert.ok(entry.lastModified === undefined || (entry.lastModified instanceof Date && entry.lastModified.getTime() <= Date.now()), entry.url);
   }
   assert.ok(entries.every((e) => e.lastModified === undefined), "untouched content has no invented lastmod");
+});
+
+// robots.txt matching as crawlers do it: a rule is a PREFIX of the URL path; "$" anchors the end.
+function blockedByRobots(path, disallow) {
+  return disallow.some((rule) => (rule.endsWith("$") ? path === rule.slice(0, -1) : path.startsWith(rule)));
+}
+
+test("robots.txt blocks the private areas but never a public, sitemap-listed page (a bare '/trainer' used to block /trainers)", async () => {
+  const { disallow } = robots().rules;
+
+  // every URL we ask search engines to index must be crawlable
+  const listed = (await sitemap()).map((entry) => new URL(entry.url).pathname);
+  assert.ok(listed.includes("/trainers"), "the public mentors page is in the sitemap");
+  for (const path of listed) assert.equal(blockedByRobots(path, disallow), false, `${path} is in the sitemap but blocked by robots.txt`);
+
+  // ...and the private areas stay blocked
+  for (const path of [
+    "/admin", "/admin/users", "/super-admin", "/student", "/student/courses",
+    "/trainer", "/trainer/classes/new", "/verify-certificate/abc", "/api/health",
+  ]) assert.equal(blockedByRobots(path, disallow), true, `${path} must stay blocked`);
 });
 
 test("/llms.txt: plain-text site summary for AI assistants, generated from the real catalog and FAQs", async () => {

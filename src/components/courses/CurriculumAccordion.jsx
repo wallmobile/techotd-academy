@@ -79,7 +79,8 @@ export function CurriculumAccordion({ course }) {
                     <button
                       type="button"
                       onClick={() => setOpenIndex(index)}
-                      aria-label={`Open ${name}`}
+                      // No aria-label: the visible text (week range + module name) is the accessible name.
+                      // The old "Open <name>" label left the week range out of the name (axe "label-content-name-mismatch").
                       className={cn(
                         "group flex h-full w-full flex-col justify-between gap-1 rounded-2xl border p-3.5 text-left transition-all duration-300",
                         isOpen

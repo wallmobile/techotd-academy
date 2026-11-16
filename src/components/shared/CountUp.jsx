@@ -55,12 +55,16 @@ export function CountUp({ value, duration = 1400 }) {
   }, [target, duration]);
 
   if (target === null) return <span>{text}</span>;
+  // The animated digits are hidden from assistive tech and the final value is read instead.
+  // (aria-label on a role-less <span> is not allowed - axe "aria-prohibited-attr" - so the
+  // value is visually-hidden text; nothing changes on screen.)
   return (
-    <span ref={ref} aria-label={text}>
+    <span ref={ref}>
       <span aria-hidden="true">
         {display}
         {suffix}
       </span>
+      <span className="sr-only">{text}</span>
     </span>
   );
 }

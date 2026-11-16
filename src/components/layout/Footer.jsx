@@ -120,6 +120,8 @@ export async function Footer() {
                 alt="TechOTD Academy — Learn, Build, Grow"
                 width={1723}
                 height={555}
+                // h-16 (64px) x 1723/555 = 199px wide; lets the browser pick a small file instead of the 1920w+ one.
+                sizes="199px"
                 className="h-16 w-auto"
               />
             </Link>

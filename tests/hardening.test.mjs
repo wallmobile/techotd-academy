@@ -144,7 +144,9 @@ test("production never prints a guessed domain on a certificate", () => {
 
 test("robots.txt keeps private areas away from crawlers and security headers are configured", async () => {
   const rules = robots().rules;
-  for (const path of ["/admin", "/student", "/trainer", "/verify-certificate"]) assert.ok(rules.disallow.includes(path), path);
+  // "/trainer/" + "/trainer$", not a bare "/trainer": robots rules are prefix matches and the
+  // public /trainers page must stay crawlable (see tests/seo.test.mjs).
+  for (const path of ["/admin", "/student", "/trainer/", "/trainer$", "/verify-certificate"]) assert.ok(rules.disallow.includes(path), path);
 
   const [{ headers }] = await nextConfig.headers();
   const names = headers.map((h) => h.key);
