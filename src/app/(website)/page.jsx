@@ -16,17 +16,31 @@ import { CampusExperience } from "@/components/home/CampusExperience";
 import { LearningResources } from "@/components/home/LearningResources";
 import { FAQSection } from "@/components/home/FAQSection";
 import { FinalCTA } from "@/components/home/FinalCTA";
+import { JsonLd } from "@/components/seo/JsonLd";
+import { faqs } from "@/data/faqs";
+import { faqSchema, pageMetadata, webPageSchema } from "@/lib/seo";
 
-export const metadata = {
+const TITLE = "TechOTD Academy | IT Training Institute in Noida";
+const DESCRIPTION =
+  "TechOTD Academy is an IT training institute in Noida with live online, classroom and hybrid courses in full stack, React, Python and AI, plus career support.";
+
+export const metadata = pageMetadata({
   // absolute: the layout's "%s | TechOTD Academy" template would repeat the name
-  title: { absolute: "TechOTD Academy | Learn. Build. Grow." },
-  description:
-    "Learn industry-ready technology skills through expert-led online and classroom training, practical projects and career-focused learning.",
-};
+  absoluteTitle: TITLE,
+  openGraphTitle: "TechOTD Academy — IT Training Institute in Noida | Learn. Build. Grow.",
+  description: DESCRIPTION,
+  path: "/",
+});
 
 export default function Home() {
   return (
     <>
+      <JsonLd
+        data={[
+          webPageSchema({ name: TITLE, description: DESCRIPTION, path: "/", aboutOrganization: true }),
+          faqSchema(faqs),
+        ]}
+      />
       <HeroSection />
       <ImpactCreated />
       {/* Learning Paths section hidden: <LearningCategories /> */}

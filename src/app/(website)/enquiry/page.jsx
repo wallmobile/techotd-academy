@@ -3,21 +3,15 @@ import { EnquiryShell } from "@/components/enquiry/EnquiryShell";
 import { getCourse, listCourses, listBatches } from "@/lib/catalog";
 import { getTrainingModeBySlug } from "@/data/trainingModes";
 import { KNOWN_SOURCES } from "@/lib/enquiry";
-import { shareImages } from "@/constants/seo";
+import { JsonLd } from "@/components/seo/JsonLd";
+import { breadcrumbSchema, pageMetadata, webPageSchema } from "@/lib/seo";
 
-export const metadata = {
-  title: "Enquiry",
-  description:
-    "Send an enquiry about TechOTD Academy courses, training modes or batches and our team will get back to you.",
-  alternates: { canonical: "/enquiry" },
-  openGraph: {
-    title: "Enquiry",
-    description:
-      "Send an enquiry about TechOTD Academy courses, training modes or batches and our team will get back to you.",
-    url: "/enquiry",
-    images: shareImages,
-  },
-};
+const TITLE = "Course Enquiry";
+const DESCRIPTION =
+  "Send an enquiry about TechOTD Academy courses, training modes or batches in Noida and our team will get back to you.";
+
+// The canonical stays "/enquiry" for every ?course= / ?mode= / ?source= variant.
+export const metadata = pageMetadata({ title: TITLE, description: DESCRIPTION, path: "/enquiry" });
 
 async function readParams(searchParams) {
   const courseParam = typeof searchParams.course === "string" ? searchParams.course : "";
@@ -36,15 +30,26 @@ export default async function EnquiryPage({ searchParams }) {
   const { course, mode, source } = await readParams(resolvedSearchParams);
 
   return (
-    <EnquiryShell variant="enquiry">
-      <EnquiryForm
-        variant="enquiry"
-        initialCourse={course}
-        initialMode={mode}
-        source={source}
-        courses={(await listCourses({ publishedOnly: true })).map((c) => ({ slug: c.slug, title: c.title }))}
-        batches={await listBatches({ publicOnly: true })}
+    <>
+      <JsonLd
+        data={[
+          webPageSchema({ type: "ContactPage", name: TITLE, description: DESCRIPTION, path: "/enquiry" }),
+          breadcrumbSchema([
+            { name: "Home", path: "/" },
+            { name: "Enquiry", path: "/enquiry" },
+          ]),
+        ]}
       />
-    </EnquiryShell>
+      <EnquiryShell variant="enquiry">
+        <EnquiryForm
+          variant="enquiry"
+          initialCourse={course}
+          initialMode={mode}
+          source={source}
+          courses={(await listCourses({ publishedOnly: true })).map((c) => ({ slug: c.slug, title: c.title }))}
+          batches={await listBatches({ publicOnly: true })}
+        />
+      </EnquiryShell>
+    </>
   );
 }

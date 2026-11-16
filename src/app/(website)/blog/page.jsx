@@ -12,13 +12,14 @@ import { listCourses, getCourse } from "@/lib/catalog";
 import { displayDuration } from "@/data/courses";
 import { techInfo, techCategories } from "@/data/techInfo";
 import { staggerContainer } from "@/lib/motion";
+import { JsonLd } from "@/components/seo/JsonLd";
+import { breadcrumbSchema, definedTermSetSchema, pageMetadata, webPageSchema } from "@/lib/seo";
 
-export const metadata = {
-  title: "Learning Resources",
-  description:
-    "Free learning resources from TechOTD Academy: a plain-language tech glossary, course learning paths and an interview-readiness checklist.",
-  alternates: { canonical: "/blog" },
-};
+const TITLE = "Free Tech Glossary & Learning Resources";
+const DESCRIPTION =
+  "Free learning resources from TechOTD Academy: a plain-language tech glossary, course learning paths and an interview-readiness checklist.";
+
+export const metadata = pageMetadata({ title: TITLE, description: DESCRIPTION, path: "/blog" });
 
 const paths = [
   {
@@ -99,6 +100,21 @@ export default async function ResourcesPage() {
 
   return (
     <>
+      <JsonLd
+        data={[
+          webPageSchema({ type: "CollectionPage", name: TITLE, description: DESCRIPTION, path: "/blog" }),
+          breadcrumbSchema([
+            { name: "Home", path: "/" },
+            { name: "Resources", path: "/blog" },
+          ]),
+          // The glossary below, as machine-readable definitions (the same text that is on the page).
+          definedTermSetSchema({
+            name: "TechOTD Academy tech glossary",
+            path: "/blog",
+            terms: terms.map(({ name, description }) => ({ name, description })),
+          }),
+        ]}
+      />
       <PageHero
         crumbs={[{ label: "Home", href: "/" }, { label: "Resources" }]}
         eyebrow="Learning resources"

@@ -3,21 +3,15 @@ import { EnquiryShell } from "@/components/enquiry/EnquiryShell";
 import { getCourse, listCourses, listBatches } from "@/lib/catalog";
 import { getTrainingModeBySlug } from "@/data/trainingModes";
 import { KNOWN_SOURCES } from "@/lib/enquiry";
-import { shareImages } from "@/constants/seo";
+import { JsonLd } from "@/components/seo/JsonLd";
+import { breadcrumbSchema, pageMetadata, webPageSchema } from "@/lib/seo";
 
-export const metadata = {
-  title: "Book a Free Counselling Session",
-  description:
-    "Book a free counselling session to discuss course options, learning modes and batch availability with the TechOTD Academy team.",
-  alternates: { canonical: "/book-demo" },
-  openGraph: {
-    title: "Book a Free Counselling Session",
-    description:
-      "Book a free counselling session to discuss course options, learning modes and batch availability with the TechOTD Academy team.",
-    url: "/book-demo",
-    images: shareImages,
-  },
-};
+const TITLE = "Book a Free Counselling Session";
+const DESCRIPTION =
+  "Book a free counselling session to discuss course options, learning modes and batch availability with the TechOTD Academy team in Noida.";
+
+// The canonical stays "/book-demo" for every ?course= / ?mode= / ?batch= / ?source= variant.
+export const metadata = pageMetadata({ title: TITLE, description: DESCRIPTION, path: "/book-demo" });
 
 // Query params are visitor-controlled input — every value is validated
 // against real data before it's trusted, and anything invalid is
@@ -44,16 +38,27 @@ export default async function BookDemoPage({ searchParams }) {
   const { course, mode, batch, source } = await readParams(resolvedSearchParams);
 
   return (
-    <EnquiryShell variant="book-demo">
-      <EnquiryForm
-        variant="book-demo"
-        initialCourse={course}
-        initialMode={mode}
-        initialBatch={batch}
-        source={source}
-        courses={(await listCourses({ publishedOnly: true })).map((c) => ({ slug: c.slug, title: c.title }))}
-        batches={await listBatches({ publicOnly: true })}
+    <>
+      <JsonLd
+        data={[
+          webPageSchema({ type: "ContactPage", name: TITLE, description: DESCRIPTION, path: "/book-demo" }),
+          breadcrumbSchema([
+            { name: "Home", path: "/" },
+            { name: "Book Demo", path: "/book-demo" },
+          ]),
+        ]}
       />
-    </EnquiryShell>
+      <EnquiryShell variant="book-demo">
+        <EnquiryForm
+          variant="book-demo"
+          initialCourse={course}
+          initialMode={mode}
+          initialBatch={batch}
+          source={source}
+          courses={(await listCourses({ publishedOnly: true })).map((c) => ({ slug: c.slug, title: c.title }))}
+          batches={await listBatches({ publicOnly: true })}
+        />
+      </EnquiryShell>
+    </>
   );
 }

@@ -11,13 +11,14 @@ import { listCourses } from "@/lib/catalog";
 import { CareerPlanner } from "@/components/careers/CareerPlanner";
 import { displayDuration } from "@/data/courses";
 import { staggerContainer } from "@/lib/motion";
+import { JsonLd } from "@/components/seo/JsonLd";
+import { breadcrumbSchema, faqSchema, pageMetadata, webPageSchema } from "@/lib/seo";
 
-export const metadata = {
-  title: "Career Support",
-  description:
-    "Resume guidance, portfolio building, mock interviews and job-search support alongside every TechOTD Academy course.",
-  alternates: { canonical: "/careers" },
-};
+const TITLE = "Career Support & Interview Preparation";
+const DESCRIPTION =
+  "Resume and portfolio help, mock interviews and job-search guidance alongside TechOTD Academy courses in Noida. Honest support, no placement guarantees.";
+
+export const metadata = pageMetadata({ title: TITLE, description: DESCRIPTION, path: "/careers" });
 
 const supportDetails = {
   RG: "Shape a clear, one-page resume that puts your projects, skills and impact up front.",
@@ -123,6 +124,16 @@ export default async function CareersPage() {
 
   return (
     <>
+      <JsonLd
+        data={[
+          webPageSchema({ name: TITLE, description: DESCRIPTION, path: "/careers" }),
+          breadcrumbSchema([
+            { name: "Home", path: "/" },
+            { name: "Career Support", path: "/careers" },
+          ]),
+          faqSchema(faqs),
+        ]}
+      />
       <PageHero
         crumbs={[{ label: "Home", href: "/" }, { label: "Career" }]}
         eyebrow="Career support"
