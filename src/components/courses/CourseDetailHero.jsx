@@ -134,19 +134,21 @@ export async function CourseDetailHero({ course }) {
               )}
             </div>
 
-            <dl className="animate-fade-up-in mt-7 grid max-w-xl grid-cols-1 gap-3 sm:grid-cols-3" style={{ animationDelay: "400ms" }}>
+            {/* Plain divs, not <dl>/<dt>/<dd>: an icon <span> beside the dt/dd pair is not valid inside a
+                <dl> (axe "definition-list"/"dlitem"). Same classes, so the look is unchanged. */}
+            <div className="animate-fade-up-in mt-7 grid max-w-xl grid-cols-1 gap-3 sm:grid-cols-3" style={{ animationDelay: "400ms" }}>
               {stats.map((stat) => (
                 <div key={stat.label} className="flex items-center gap-3 rounded-2xl border border-border bg-white/80 p-3 shadow-soft backdrop-blur">
                   <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
                     {stat.icon}
                   </span>
                   <div className="min-w-0">
-                    <dt className="text-[10px] font-semibold uppercase tracking-wider text-muted">{stat.label}</dt>
-                    <dd className="text-[13px] font-semibold leading-snug text-dark">{stat.value}</dd>
+                    <div className="text-[10px] font-semibold uppercase tracking-wider text-muted">{stat.label}</div>
+                    <div className="text-[13px] font-semibold leading-snug text-dark">{stat.value}</div>
                   </div>
                 </div>
               ))}
-            </dl>
+            </div>
 
             <div className="animate-fade-up-in mt-8 flex flex-wrap gap-3" style={{ animationDelay: "480ms" }}>
               <CtaButton

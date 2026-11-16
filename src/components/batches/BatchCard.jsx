@@ -102,7 +102,10 @@ function Tile({ label, value, onGradient }) {
   );
 }
 
-export function BatchCard({ batch, delay = 0, spotlight = false }) {
+// headingLevel: the batch list page passes 2 because its cards follow the page <h1> directly
+// (axe "heading-order"); the default 3 is for cards placed under a section <h2>.
+export function BatchCard({ batch, delay = 0, spotlight = false, headingLevel = 3 }) {
+  const Heading = `h${headingLevel}`;
   // The course is attached by the caller (BatchExplorer / pages).
   const course = batch.course;
 
@@ -135,7 +138,7 @@ export function BatchCard({ batch, delay = 0, spotlight = false }) {
               </span>
             </div>
             <p className="mt-5 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/75">{course.category}</p>
-            <h3 className="mt-2 text-3xl font-semibold leading-tight tracking-tight sm:text-4xl">{course.title}</h3>
+            <Heading className="mt-2 text-3xl font-semibold leading-tight tracking-tight sm:text-4xl">{course.title}</Heading>
             <p className="mt-3 max-w-md text-base text-white/85">
               Starts {start ? `${start.weekday}, ${batch.startDate}` : batch.startDate} · {batch.mode}
             </p>
@@ -188,9 +191,9 @@ export function BatchCard({ batch, delay = 0, spotlight = false }) {
       </div>
 
       <p className="relative mt-5 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">{course.category}</p>
-      <h3 className="relative mt-2 text-xl font-semibold leading-snug tracking-tight text-dark transition-colors group-hover:text-primary">
+      <Heading className="relative mt-2 text-xl font-semibold leading-snug tracking-tight text-dark transition-colors group-hover:text-primary">
         {course.title}
-      </h3>
+      </Heading>
 
       {/* timetable block */}
       <div className="relative mt-5 flex items-center gap-3 rounded-2xl border border-border bg-surface px-4 py-3.5">

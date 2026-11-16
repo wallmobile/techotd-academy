@@ -11,7 +11,12 @@ export default function robots() {
       allow: "/",
       // Private, authenticated areas and the certificate-verification lookup
       // are not for crawlers (they are also noindex).
-      disallow: ["/admin", "/super-admin", "/student", "/trainer", "/verify-certificate", "/api"],
+      //
+      // robots.txt rules are PREFIX matches, so a bare "/trainer" also blocked the public
+      // /trainers page (found by Lighthouse "is-crawlable"). The trainer area is therefore
+      // listed as "/trainer/" (everything inside it) plus "/trainer$" (the dashboard URL
+      // itself; "$" = end of URL). None of the other entries is a prefix of a public page.
+      disallow: ["/admin", "/super-admin", "/student", "/trainer/", "/trainer$", "/verify-certificate", "/api"],
     },
     sitemap: `${siteUrl}/sitemap.xml`,
   };

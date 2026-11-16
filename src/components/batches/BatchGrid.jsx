@@ -12,6 +12,7 @@ export function BatchGrid({ batches, spotlightFirst = false }) {
           batch={batch}
           delay={Math.min(index, 8) * 70}
           spotlight={spotlightFirst && index === 0}
+          headingLevel={2}
         />
       ))}
     </div>

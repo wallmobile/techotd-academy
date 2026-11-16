@@ -18,6 +18,7 @@ export function CourseGrid({ courses, spotlightFirst = false }) {
           course={course}
           delay={Math.min(index, 8) * 70}
           spotlight={spotlightFirst && index === 0}
+          headingLevel={2}
         />
       ))}
     </div>

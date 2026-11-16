@@ -41,6 +41,10 @@ export function Header() {
             width={1723}
             height={555}
             priority
+            fetchPriority="high"
+            // Rendered width = height x 1723/555: h-12 (48px) = 149px, md:h-14 (56px) = 174px, xl:h-[4.25rem] (68px) = 211px.
+            // Without `sizes` the browser fetched the 1920w-3840w file (~118 KB) for a ~200px logo.
+            sizes="(min-width: 1280px) 211px, (min-width: 768px) 174px, 149px"
             className="h-12 w-auto md:h-14 xl:h-[4.25rem]"
           />
         </Link>
